@@ -1,5 +1,20 @@
 {
   "asOf": "2026-11-23",
-  "expected": { "rates": 4.25, "cpi": 3.7, "unemployment": 4.2, "gdp": 3.2, "pmi": 54.5 },
-  "actual":   { "pmi": 55.5 }
+  "expected": {
+    "rates": 4.25,
+    "cpi": 3.7,
+    "unemployment": 4.2,
+    "gdp": 3.2,
+    "pmi": 54.5
+  },
+  "actual": {
+    "pmi": 55.5
+  },
+  "releaseISO": {
+    "rates": "2026-11-07",
+    "cpi": "2026-11-10",
+    "unemployment": "2026-11-06",
+    "gdp": "2026-10-29",
+    "pmi": "2026-11-02"
+  }
 }
