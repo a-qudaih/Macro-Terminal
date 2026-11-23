@@ -115,6 +115,7 @@ def main():
             v["releaseISO"] = TODAY
         else:
             v["releaseISO"] = old.get("releaseISO", TODAY)
+        v["releaseISO"] = cons.get("releaseISO", {}).get(k, v["releaseISO"])  # your real release dates win
         v["releaseDate"] = dt.date.fromisoformat(v["releaseISO"]).strftime("%b %d")
         v["needsConsensus"] = v["releaseISO"] > as_of
 
