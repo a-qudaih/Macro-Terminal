@@ -1,0 +1,22 @@
+name: update-data
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"   # 22:30 UTC = 06:30 MYT, after the US close
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python fetch_data.py
+        env: { FRED_API_KEY: "${{ secrets.FRED_API_KEY }}" }
+      - run: |
+          git config user.name "terminal-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data.json data.js
+          git diff --cached --quiet || git commit -m "daily data"
+          git push
