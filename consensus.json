@@ -1,0 +1,5 @@
+{
+  "asOf": "2026-11-23",
+  "expected": { "rates": 4.25, "cpi": 3.7, "unemployment": 4.2, "gdp": 3.2, "pmi": 54.5 },
+  "actual":   { "pmi": 55.5 }
+}

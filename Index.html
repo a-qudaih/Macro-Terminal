@@ -1,0 +1,2642 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Macro & Sentiment Terminal v6 | Auto-Data</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            terminal: {
+              bg: '#090d16',
+              panel: '#0f1624',
+              card: '#131c2e',
+              border: '#1e293b',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #090d16;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+    }
+    /* Custom Institutional Range Sliders */
+    input[type="range"].score-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #f43f5e 0%, #334155 50%, #10b981 100%);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"].score-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #f8fafc;
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.45);
+      transition: transform 0.12s ease;
+    }
+    input[type="range"].score-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    input[type="range"].fg-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #f43f5e 0%, #f59e0b 35%, #94a3b8 50%, #38bdf8 70%, #10b981 100%);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"].fg-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid #090d16;
+      box-shadow: 0 0 10px rgba(255,255,255,0.4);
+      cursor: pointer;
+    }
+    /* Custom thin scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+<script src="data.js" onerror="void 0"></script>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Asset Sensitivity Beta Matrix Modal -->
+  <div id="beta-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="bg-terminal-card border border-terminal-border rounded-2xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b border-terminal-border bg-terminal-panel flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400">
+            <i data-lucide="grid" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-bold text-white">Asset Sensitivity Weighting Matrix (Beta Multipliers)</h3>
+              <span id="beta-lock-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">STRUCTURALLY LOCKED</span>
+            </div>
+            <p class="text-xs text-gray-400">Fixed structural index composition weights to prevent daily curve-fitting</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-toggle-beta-lock" onclick="toggleBetaLock()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-mono transition-colors">
+            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+            <span>Unlock to Calibrate</span>
+          </button>
+          <button onclick="toggleBetaModal(false)" class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="p-5 overflow-auto space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div class="p-3 rounded-xl bg-[#0b0f19] border border-gray-800">
+            <span class="font-mono text-emerald-400 font-bold">DOW JONES (US30) vs RUSSELL (US2000)</span>
+            <p class="text-gray-400 mt-1 leading-relaxed">US30 carries low <strong>0.6x Rate beta</strong> (cash-rich mega-caps) and high <strong>1.4x Growth beta</strong>. US2000 carries <strong>1.8x Rate beta</strong> (~40% floating-rate/unprofitable firms) and <strong>-0.5x USD beta</strong> (80%+ domestic US revenue).</p>
+          </div>
+          <div class="p-3 rounded-xl bg-[#0b0f19] border border-gray-800">
+            <span class="font-mono text-blue-400 font-bold">NASDAQ 100 (US100) DURATION</span>
+            <p class="text-gray-400 mt-1 leading-relaxed">Long-duration tech cash flows carry <strong>1.6x Rate</strong> & <strong>1.5x CPI beta</strong>, making US100 heavily sensitive to front-end 2Y/10Y yield spikes and foreign FX translation (<strong>1.2x USD beta</strong>).</p>
+          </div>
+          <div class="p-3 rounded-xl bg-[#0b0f19] border border-gray-800">
+            <span class="font-mono text-amber-400 font-bold">GOLD (XAU/USD) & NIKKEI (JP225)</span>
+            <p class="text-gray-400 mt-1 leading-relaxed">Gold carries <strong>1.7x Real Yield</strong> & <strong>1.8x USD beta</strong> (strong USD/yields hurt non-yielding bullion). Nikkei carries <strong>-0.9x USD beta</strong> because weak Yen boosts exporter earnings.</p>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto border border-terminal-border rounded-xl">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-terminal-panel border-b border-terminal-border font-mono text-[11px] text-gray-400 uppercase">
+                <th class="py-2.5 px-3">Asset</th>
+                <th class="py-2.5 px-3 text-center">Rates / Yield Beta</th>
+                <th class="py-2.5 px-3 text-center">CPI Inflation Beta</th>
+                <th class="py-2.5 px-3 text-center">Labor / Jobs Beta</th>
+                <th class="py-2.5 px-3 text-center">GDP / PMI Beta</th>
+                <th class="py-2.5 px-3 text-center">USD / FX Beta</th>
+              </tr>
+            </thead>
+            <tbody id="beta-matrix-tbody" class="divide-y divide-gray-800/70 font-mono">
+              <!-- Populated dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 border-t border-terminal-border bg-terminal-panel flex items-center justify-between">
+        <button onclick="resetBetaWeights()" class="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-mono text-gray-300 transition-colors">
+          Reset Default Institutional Betas
+        </button>
+        <button onclick="toggleBetaModal(false)" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white transition-colors">
+          Apply & Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Navigation & Live Telemetry Bar -->
+  <header class="border-b border-terminal-border bg-[#0d121f]/95 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-[1680px] mx-auto px-4 sm:px-6 py-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+      <!-- Brand & Live Feed Status -->
+      <div class="flex flex-wrap items-center justify-between xl:justify-start gap-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500/20 to-blue-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            <i data-lucide="activity" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base sm:text-lg font-bold tracking-tight text-white leading-none">
+                MACRO & SENTIMENT <span class="text-emerald-400 font-mono text-sm">TERMINAL v4</span>
+              </h1>
+              <span class="hidden sm:inline-block px-1.5 py-0.5 rounded bg-blue-500/15 border border-blue-500/30 text-[10px] font-mono text-blue-300">7 ASSETS + HISTORY</span>
+            </div>
+            <p class="text-[11px] text-gray-400 mt-1 font-mono">50/50 BALANCED PILLARS • NON-REDUNDANT SURPRISE & CONTRARIAN • BACKTEST LOG</p>
+          </div>
+        </div>
+
+        <!-- View Switcher Tabs (Live Terminal vs Scoring History & Performance Log) -->
+        <div class="inline-flex rounded-xl bg-gray-900 p-1 border border-terminal-border">
+          <button id="tab-btn-terminal" onclick="switchWorkspaceTab('terminal')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+            <span>Live Scorecard</span>
+          </button>
+          <button id="tab-btn-history" onclick="switchWorkspaceTab('history')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-400 hover:text-gray-200 border border-transparent">
+            <i data-lucide="history" class="w-3.5 h-3.5"></i>
+            <span>Score History & Performance</span>
+            <span id="history-count-pill" class="px-1.5 py-0.2 rounded-full bg-gray-800 text-[10px] font-mono text-gray-300">21</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Controls: Mode Switcher, Log Snapshot, Beta Matrix, Live Sync, Reset, Copy MD -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Scoring Engine Mode Toggle -->
+        <div class="inline-flex rounded-lg bg-gray-900 p-0.5 border border-terminal-border" role="group">
+          <button id="btn-mode-quant" onclick="setScoringMode('quant')" class="px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            Auto-Quant Model
+          </button>
+          <button id="btn-mode-manual" onclick="setScoringMode('manual')" class="px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 border border-transparent">
+            Analyst Override
+          </button>
+        </div>
+
+        <!-- Log Snapshot Button -->
+        <button onclick="logCurrentSnapshot(true)" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-sm transition-all active:scale-95" title="Record current 7-asset scores & spot prices into history">
+          <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+          <span>Log Snapshot</span>
+        </button>
+
+        <!-- Beta Matrix Inspector Button -->
+        <button onclick="toggleBetaModal(true)" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 text-xs font-medium transition-all active:scale-95">
+          <i data-lucide="lock" id="header-beta-lock-icon" class="w-3.5 h-3.5"></i>
+          <span>Beta Matrix</span>
+        </button>
+
+        <!-- Force Sync Live Feeds Button -->
+        <button onclick="syncLiveMarketData(true)" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-medium transition-all active:scale-95" title="Fetch live market feeds">
+          <i id="sync-spinner" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span>Sync</span>
+        </button>
+
+        <!-- Reset Button -->
+        <button onclick="resetAllToDefaults()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-terminal-border text-gray-300 text-xs font-medium transition-all active:scale-95" title="Reset sliders & regime to baseline">
+          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+        </button>
+
+        <!-- Copy Markdown Journal Button -->
+        <button onclick="copyJournalMarkdown()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-emerald-500/40 text-emerald-300 text-xs font-medium transition-all active:scale-95">
+          <i data-lucide="clipboard-copy" class="w-3.5 h-3.5"></i>
+          <span>Copy MD</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Data Freshness & Macro Regime Banner -->
+    <div class="bg-[#0a0f1a] border-t border-gray-800/90">
+      <div class="max-w-[1680px] mx-auto px-4 sm:px-6 py-2 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 text-xs">
+        <!-- Freshness & Timestamp -->
+        <div class="flex flex-wrap items-center gap-2.5 font-mono">
+          <div class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-gray-900 border border-gray-800">
+            <span id="sync-pulse" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="sync-status-text" class="text-gray-200 text-[11px]">SYNCED (NOV 23, 2026)</span>
+            <span id="auto-data-pill" class="ml-2 px-1.5 py-0.5 rounded border border-gray-700 text-[10px] font-mono text-gray-400">AUTO-DATA: loading</span>
+            <span id="sync-countdown" class="text-gray-500 text-[10px]">60s</span>
+          </div>
+          <span class="text-gray-600 hidden sm:inline">|</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-gray-400 text-[11px] uppercase">Active Regime:</span>
+            <button id="banner-regime-btn" onclick="toggleMacroRegimeQuick()" class="px-2 py-0.5 rounded font-semibold text-[11px] bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:opacity-90 transition-opacity">
+              HAWKISH INFLATION REGIME (GOOD = BAD)
+            </button>
+          </div>
+        </div>
+
+        <!-- Editable 1-Line Macro Regime Note -->
+        <div class="flex items-center gap-2 flex-1 max-w-2xl">
+          <span class="text-[11px] font-mono text-amber-400 shrink-0 flex items-center gap-1">
+            <i data-lucide="radio" class="w-3 h-3"></i>
+            <span>REGIME NOTE:</span>
+          </span>
+          <input
+            id="macro-regime-note-input"
+            type="text"
+            value="Sticky 3.8% CPI & resilient 165k NFP keep Fed hawkish for Dec; strong data pressures rate-sensitive multiples & gold."
+            onchange="updateRegimeNote(this.value)"
+            class="w-full bg-gray-900/70 border border-gray-800 focus:border-emerald-500/50 rounded px-2.5 py-1 text-xs text-gray-200 focus:outline-none"
+            placeholder="Enter 1-line macro regime context..."
+          />
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-[1680px] w-full mx-auto px-4 sm:px-6 py-5">
+
+    <!-- ===================================================================== -->
+    <!-- TAB 1: LIVE SCORECARD WORKSPACE                                       -->
+    <!-- ===================================================================== -->
+    <div id="workspace-terminal" class="space-y-5">
+
+      <!-- Top Macro Telemetry Strip (Yields, VIX, DXY, CNN Fear & Greed) -->
+      <section class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <!-- US 10Y / 2Y Yield Card -->
+        <div class="bg-terminal-card border border-terminal-border rounded-2xl p-3.5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs font-mono text-gray-400">
+            <span>US 10Y / 2Y YIELD</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] bg-rose-500/15 text-rose-300 border border-rose-500/30">HAWKISH</span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-1.5 font-mono tabular-nums">
+            <span id="macro-us10y-val" class="text-xl font-bold text-white">4.92%</span>
+            <span id="macro-us2y-val" class="text-xs text-gray-400">/ 4.68%</span>
+          </div>
+          <div class="mt-1 flex items-center justify-between text-[11px] font-mono">
+            <span class="text-gray-500">10Y Delta</span>
+            <span id="macro-us10y-chg" class="text-rose-400">+5.0 bps</span>
+          </div>
+        </div>
+
+        <!-- CBOE VIX Card -->
+        <div class="bg-terminal-card border border-terminal-border rounded-2xl p-3.5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs font-mono text-gray-400">
+            <span>CBOE VIX INDEX</span>
+            <span id="macro-vix-tag" class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30">ELEVATED</span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2 font-mono tabular-nums">
+            <span id="macro-vix-val" class="text-xl font-bold text-white">24.85</span>
+            <span id="macro-vix-chg" class="text-xs text-rose-400">+8.4%</span>
+          </div>
+          <div class="mt-1 text-[11px] font-mono text-gray-500">Implied Equity Volatility</div>
+        </div>
+
+        <!-- US Dollar Index (DXY) Card -->
+        <div class="bg-terminal-card border border-terminal-border rounded-2xl p-3.5 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs font-mono text-gray-400">
+            <span>US DOLLAR (DXY)</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/15 text-blue-300 border border-blue-500/30">FX DRAG</span>
+          </div>
+          <div class="mt-2 flex items-baseline gap-2 font-mono tabular-nums">
+            <span id="macro-dxy-val" class="text-xl font-bold text-white">103.81</span>
+            <span id="macro-dxy-chg" class="text-xs text-emerald-400">+0.35%</span>
+          </div>
+          <div class="mt-1 text-[11px] font-mono text-gray-500">Global Liquidity Anchor</div>
+        </div>
+
+        <!-- CNN Fear & Greed Contrarian Gauge (Spans 2 cols on lg) -->
+        <div class="col-span-2 bg-terminal-card border border-terminal-border rounded-2xl p-3.5 flex flex-col justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono text-gray-300 font-semibold">CNN FEAR & GREED</span>
+              <span id="fg-zone-badge" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold border bg-rose-500/20 text-rose-300 border-rose-500/40">EXTREME FEAR (14)</span>
+            </div>
+            <div class="inline-flex rounded-md bg-gray-900 p-0.5 border border-gray-800 text-[10px] font-mono">
+              <button id="btn-fg-contrarian" onclick="setFearGreedMode('contrarian')" class="px-2 py-0.5 rounded bg-purple-500/25 text-purple-300 border border-purple-500/40">
+                Contrarian
+              </button>
+              <button id="btn-fg-linear" onclick="setFearGreedMode('linear')" class="px-2 py-0.5 rounded text-gray-400 hover:text-gray-200">
+                Trend Linear
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-2.5 flex items-center gap-3">
+            <span id="fg-numeric-val" class="text-2xl font-bold font-mono tabular-nums text-white w-10">14</span>
+            <input id="fg-slider" type="range" min="0" max="100" step="1" value="14" oninput="updateFearGreed(this.value)" class="fg-slider flex-1" />
+            <div class="hidden sm:flex items-center gap-1 text-[10px] font-mono">
+              <button onclick="updateFearGreed(14)" class="px-1.5 py-0.5 rounded bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30">14 Panic</button>
+              <button onclick="updateFearGreed(34)" class="px-1.5 py-0.5 rounded bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30">34 Fear</button>
+              <button onclick="updateFearGreed(50)" class="px-1.5 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300">50</button>
+              <button onclick="updateFearGreed(84)" class="px-1.5 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30">84 Greed</button>
+            </div>
+          </div>
+
+          <div class="mt-1.5 flex items-center justify-between text-[11px] font-mono text-gray-400">
+            <span id="fg-impact-summary">Contrarian Equity Overlay: <strong class="text-emerald-400">+0.88</strong> | Gold Safe-Haven Bid: <strong class="text-emerald-400">+0.65</strong></span>
+            <span class="text-gray-500">0–100 Scale</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Economic Surprise Engine (Actual vs Expected + Regime Switch) -->
+      <section class="bg-terminal-card border border-terminal-border rounded-2xl p-4 sm:p-5 space-y-3.5">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+          <div class="flex items-center gap-2.5">
+            <div class="p-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-400">
+              <i data-lucide="zap" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-sm sm:text-base font-bold text-white">Economic Surprise Engine (Actual vs. Consensus)</h2>
+              <p class="text-xs text-gray-400">Computes standardized Z-scores (-1.0 to +1.0) &amp; routes them through each asset's Beta Matrix</p>
+            </div>
+          </div>
+
+          <div class="inline-flex rounded-lg bg-gray-900 p-1 border border-terminal-border text-xs self-start sm:self-auto">
+            <button id="btn-regime-inflation" onclick="setMacroRegime('inflation')" class="px-2.5 py-1 rounded-md font-medium transition-colors bg-rose-500/20 text-rose-300 border border-rose-500/40">
+              Inflation Focus (Good = Bad)
+            </button>
+            <button id="btn-regime-growth" onclick="setMacroRegime('growth')" class="px-2.5 py-1 rounded-md font-medium transition-colors text-gray-400 hover:text-gray-200 border border-transparent">
+              Growth Focus (Good = Good)
+            </button>
+          </div>
+        </div>
+
+        <div id="surprise-inputs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <!-- Populated dynamically by renderSurpriseEngine() -->
+        </div>
+      </section>
+
+      <!-- 7-Asset Quick Bias Cards -->
+      <section id="bias-board" class="rounded-2xl border border-terminal-border bg-terminal-panel p-4"></section>
+      <section id="asset-cards-grid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <!-- Populated dynamically by renderAssetCards() -->
+      </section>
+
+      <!-- Main Split: 7-Asset Comparison Table + Selected Asset 10-Factor Inspector -->
+      <section class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+        <!-- Left: Live Scorecard Matrix Table (7 cols) -->
+        <div class="xl:col-span-7 bg-terminal-card border border-terminal-border rounded-2xl overflow-hidden">
+          <div class="px-5 py-4 border-b border-terminal-border flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-base font-bold text-white">Live 7-Asset Bias Scorecard</h2>
+              <p class="text-xs text-gray-400">Click any index or gold row to inspect &amp; fine-tune its 10 sub-factors</p>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-gray-900 border border-gray-800 text-[11px] font-mono text-gray-400">-5.0 BEARISH &harr; +5.0 BULLISH</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-[#0b101b] border-b border-terminal-border font-mono text-[11px] uppercase text-gray-400">
+                  <th class="py-3 px-4">Asset / Spot</th>
+                  <th class="py-3 px-2.5 text-center">Fund</th>
+                  <th class="py-3 px-2.5 text-center">Sent</th>
+                  <th class="py-3 px-3 text-center">Composite</th>
+                  <th class="py-3 px-3">Bias &amp; Alerts</th>
+                  <th class="py-3 px-4 hidden md:table-cell">COT Flow &amp; Catalyst</th>
+                </tr>
+              </thead>
+              <tbody id="scorecard-table-body" class="divide-y divide-gray-800/70">
+                <!-- Populated dynamically by renderScorecardTable() -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: 10-Factor Sub-Score Inspector & COT Panel (5 cols) -->
+        <div class="xl:col-span-5 bg-terminal-card border border-terminal-border rounded-2xl p-5 space-y-4">
+          <div class="flex items-start justify-between gap-3 pb-3.5 border-b border-terminal-border">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span id="inspector-ticker" class="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/40 font-mono text-xs font-bold text-emerald-300">US30</span>
+                <h3 id="inspector-name" class="text-base font-bold text-white">Dow Jones Industrial Average</h3>
+                <span id="inspector-caution-badge" class="hidden px-2 py-0.5 rounded border font-mono text-[10px] font-bold">BOUNCE RISK</span>
+              </div>
+              <div class="mt-1 flex flex-wrap items-center gap-2 text-xs font-mono">
+                <span id="inspector-price" class="text-gray-200 font-semibold">48,147.00 (+0.25%)</span>
+                <span class="text-gray-600">&bull;</span>
+                <span id="inspector-sma-status" class="text-emerald-400">+1.4% vs 50d SMA | +6.5% vs 200d SMA</span>
+              </div>
+            </div>
+
+            <div class="text-right shrink-0">
+              <div id="inspector-composite-score" class="text-2xl font-bold font-mono tabular-nums text-emerald-300">+1.2</div>
+              <div id="inspector-bias-label" class="text-[11px] font-mono uppercase tracking-wider text-emerald-300">Neutral / Range</div>
+            </div>
+          </div>
+
+          <!-- Divergence Explanation & Editable Next Catalyst -->
+          <div class="space-y-2">
+            <div id="inspector-divergence-note" class="p-3 rounded-xl bg-[#0b0f19] border border-gray-800 text-xs text-gray-300 leading-relaxed">
+              <!-- Populated dynamically -->
+            </div>
+
+            <div class="flex items-center gap-2 bg-[#0b0f19] border border-gray-800 rounded-xl px-3 py-2">
+              <span class="text-[11px] font-mono text-purple-300 shrink-0 flex items-center gap-1">
+                <i data-lucide="calendar-clock" class="w-3.5 h-3.5"></i>
+                <span>NEXT CATALYST:</span>
+              </span>
+              <input
+                id="inspector-catalyst-input"
+                type="text"
+                value="Nov ISM Mfg & Durable Goods"
+                onchange="updateAssetCatalyst(this.value)"
+                class="w-full bg-transparent text-xs font-mono text-white focus:outline-none focus:text-emerald-300"
+              />
+            </div>
+          </div>
+
+          <!-- COT Institutional Positioning Bar & Inputs -->
+          <div class="p-3.5 rounded-xl bg-[#0b0f19] border border-gray-800 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-mono font-semibold text-gray-300">CFTC COT INSTITUTIONAL POSITIONING</span>
+              <span id="cot-signal-tag" class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">INSTITUTIONAL ACCUMULATION</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-rose-500/30 overflow-hidden flex">
+              <div id="cot-long-bar" class="h-full bg-emerald-400 transition-all duration-300" style="width: 51.8%;"></div>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+              <span>Long: <strong id="cot-long-pct" class="text-emerald-400">51.8%</strong> | Short: <strong id="cot-short-pct" class="text-rose-400">48.2%</strong></span>
+              <span>Wk Shift: <strong id="cot-change-pct" class="text-emerald-400">+3.10%</strong></span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-gray-800/80 text-[11px] font-mono">
+              <label class="flex items-center justify-between bg-gray-900 border border-gray-800 rounded px-2 py-1">
+                <span class="text-gray-400">Net Long %</span>
+                <input id="input-cot-long" type="number" step="0.1" min="0" max="100" value="51.8" onchange="updateAssetCot('longPct', this.value)" class="w-16 bg-transparent text-right text-white font-bold focus:outline-none" />
+              </label>
+              <label class="flex items-center justify-between bg-gray-900 border border-gray-800 rounded px-2 py-1">
+                <span class="text-gray-400">Wk Chg %</span>
+                <input id="input-cot-change" type="number" step="0.1" min="-50" max="50" value="3.10" onchange="updateAssetCot('weeklyChangePct', this.value)" class="w-16 bg-transparent text-right text-white font-bold focus:outline-none" />
+              </label>
+            </div>
+          </div>
+
+          <!-- Fundamental 5-Factor Sliders -->
+          <div class="space-y-3 pt-1">
+            <div class="flex items-center justify-between border-b border-gray-800 pb-1.5">
+              <span class="text-xs font-mono font-bold uppercase tracking-wider text-blue-300">Fundamental Pillar (50%)</span>
+              <span id="inspector-fund-total" class="text-sm font-mono font-bold tabular-nums text-gray-300">0.0 / 5.0</span>
+            </div>
+            <div id="fundamental-sliders-container" class="space-y-3"></div>
+          </div>
+
+          <!-- Sentiment 5-Factor Sliders -->
+          <div class="space-y-3 pt-2">
+            <div class="flex items-center justify-between border-b border-gray-800 pb-1.5">
+              <span class="text-xs font-mono font-bold uppercase tracking-wider text-purple-300">Sentiment &amp; Flow Pillar (50%)</span>
+              <span id="inspector-sent-total" class="text-sm font-mono font-bold tabular-nums text-gray-300">+2.3 / 5.0</span>
+            </div>
+            <div id="sentiment-sliders-container" class="space-y-3"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: SCORING HISTORY & BACKTEST PERFORMANCE LOG                     -->
+    <!-- ===================================================================== -->
+    <div id="workspace-history" class="hidden space-y-5">
+      <!-- Export / Import Toolbar -->
+      <div class="bg-terminal-card border border-terminal-border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 class="text-base font-bold text-white">Long-Run Calibration &amp; Backtest Performance Log</h2>
+          <p class="text-xs text-gray-400">Tracks historical bias calls vs. forward price returns to measure hit rate and pillar edge</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="logCurrentSnapshot(true)" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold">
+            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+            <span>Log Now</span>
+          </button>
+          <button onclick="exportHistoryCSV()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-700 text-xs font-mono text-gray-200">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+            <span>CSV</span>
+          </button>
+          <button onclick="exportHistoryJSON()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-700 text-xs font-mono text-gray-200">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span>JSON</span>
+          </button>
+          <label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-700 text-xs font-mono text-gray-200 cursor-pointer">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+            <span>Import</span>
+            <input type="file" accept=".json" onchange="importHistoryJSON(event)" class="hidden" />
+          </label>
+          <button onclick="copyPerformanceMarkdown()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-xs font-mono text-blue-300">
+            <i data-lucide="clipboard-check" class="w-3.5 h-3.5"></i>
+            <span>Copy Report</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Calibration Analytics Summary Strip -->
+      <section id="history-kpis-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- Rendered dynamically -->
+      </section>
+
+      <!-- Interactive SVG Line Chart: Composite Score (-5 to +5) vs Spot Price Progression -->
+      <section class="bg-terminal-card border border-terminal-border rounded-2xl p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              <span>Composite Bias Trajectory (-5.0 to +5.0) vs. Spot Price</span>
+              <span id="chart-asset-badge" class="px-2 py-0.5 rounded bg-blue-500/20 border border-blue-500/40 text-blue-300 font-mono text-xs">XAUUSD</span>
+            </h3>
+            <p class="text-xs text-gray-400 mt-0.5">Solid colored line = Composite Bias (-5 to +5) | Dashed white line = Spot Price trajectory</p>
+          </div>
+
+          <!-- Asset Filter Pills for Chart & Table -->
+          <div id="history-asset-filter-pills" class="flex flex-wrap items-center gap-1.5">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <div id="history-svg-container" class="w-full bg-[#0b0f19] border border-gray-800/90 rounded-xl p-3 overflow-hidden">
+          <!-- Interactive SVG Chart injected here -->
+        </div>
+      </section>
+
+      <!-- Historical Accuracy & Calibration Log Table -->
+      <section class="bg-terminal-card border border-terminal-border rounded-2xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-terminal-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h3 class="text-base font-semibold text-white">Historical Accuracy & Forward-Return Calibration Table</h3>
+            <p class="text-xs text-gray-400">Edit <strong>Follow-Up Price (+5d/+10d)</strong> on any row to automatically recalculate Return % and Directional Hit/Miss accuracy</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="history-table-asset-filter" onchange="setHistoryFilterAsset(this.value)" class="bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-gray-200 focus:outline-none focus:border-emerald-400">
+              <option value="ALL">All 7 Assets</option>
+              <option value="US500">S&amp;P 500 (US500)</option>
+              <option value="US100">Nasdaq 100 (US100)</option>
+              <option value="US30">Dow Jones 30 (US30)</option>
+              <option value="US2000">Russell 2000 (US2000)</option>
+              <option value="GER40">DAX 40 (GER40)</option>
+              <option value="JP225">Nikkei 225 (JP225)</option>
+              <option value="XAUUSD">Gold (XAUUSD)</option>
+            </select>
+            <button onclick="resetHistoryToSeed()" class="px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-700 text-xs font-mono text-gray-400 hover:text-gray-200">
+              Reset Seed Data
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-[#0b101b] border-b border-terminal-border font-mono text-[11px] uppercase text-gray-400">
+                <th class="py-3 px-4">Date / Time</th>
+                <th class="py-3 px-3">Asset</th>
+                <th class="py-3 px-2.5 text-center">Fund / Sent</th>
+                <th class="py-3 px-2.5 text-center">Composite</th>
+                <th class="py-3 px-3">Logged Bias</th>
+                <th class="py-3 px-3 text-right">Entry Price</th>
+                <th class="py-3 px-3 text-right">Follow-Up (+5d)</th>
+                <th class="py-3 px-3 text-right">Return %</th>
+                <th class="py-3 px-3 text-center">Accuracy</th>
+                <th class="py-3 px-3 text-center">Del</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body" class="divide-y divide-gray-800/70 font-mono">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. CONFIGURATION, ECONOMIC SURPRISES & ASSET BETA MATRICES
+    // =========================================================================
+    const STORAGE_KEY = 'macro_scorecard_v5_model';
+    const HISTORY_STORAGE_KEY = 'macro_scorecard_v4_history_log';
+    const LAST_AUTO_LOG_DATE_KEY = 'macro_scorecard_v4_last_auto_date';
+
+    // Actual vs. Consensus Economic Releases (Late Nov 2026 Calibration)
+    const ECONOMIC_INDICATORS = [
+      { id: 'rates', name: 'Fed Target Rate', actual: 4.50, expected: 4.25, stdDev: 0.25, unit: '%', releaseDate: 'Nov 07', note: 'Hawkish hold / Dec hike risk', isRateOrInflation: true, invertRawSurprise: false },
+      { id: 'cpi', name: 'US CPI YoY', actual: 3.80, expected: 3.70, stdDev: 0.20, unit: '%', releaseDate: 'Nov 10', note: 'Sticky core services inflation', isRateOrInflation: true, invertRawSurprise: false },
+      { id: 'unemployment', name: 'Unemployment Rate', actual: 4.10, expected: 4.20, stdDev: 0.20, unit: '%', releaseDate: 'Nov 06', note: 'Tight labor / 165k NFP beat', isRateOrInflation: false, invertRawSurprise: true },
+      { id: 'gdp', name: 'US GDP QoQ', actual: 3.40, expected: 3.20, stdDev: 0.40, unit: '%', releaseDate: 'Oct 29', note: 'Resilient consumer expansion', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'pmi', name: 'Mfg PMI (ISM)', actual: 55.5, expected: 54.5, stdDev: 1.50, unit: 'pts', releaseDate: 'Nov 02', note: 'Industrial new orders rebound', isRateOrInflation: false, invertRawSurprise: false }
+    ];
+
+    // Asset-Specific Macro Sensitivity Weighting Matrix (Beta Multipliers)
+    const DEFAULT_BETA_WEIGHTS = {
+      US500:  { rates: 1.0, cpi: 1.1, labor: 1.0, growth: 1.1, usd: 1.0 },
+      US100:  { rates: 1.6, cpi: 1.5, labor: 0.7, growth: 0.8, usd: 1.2 },
+      US30:   { rates: 0.6, cpi: 0.7, labor: 1.0, growth: 1.4, usd: 0.8 },
+      US2000: { rates: 1.8, cpi: 1.5, labor: 1.6, growth: 1.7, usd: 0.1 },
+      GER40:  { rates: 0.9, cpi: 1.0, labor: 0.8, growth: 1.3, usd: -0.3 },
+      JP225:  { rates: 1.1, cpi: 0.8, labor: 0.7, growth: 1.2, usd: -0.9 },
+      XAUUSD: { rates: 1.7, cpi: 1.2, labor: 1.1, growth: -0.8, usd: 1.8 }
+    };
+
+    // Month-indexed seasonality priors (Jan..Dec), editable. Validate on your own data before trusting.
+    const SEASON = {
+      EQ:   [0.2, -0.1, 0.1, 0.4, 0.0, 0.0, 0.4, -0.2, -0.5, 0.2, 0.6, 0.5],
+      GOLD: [0.4, 0.1, -0.1, 0.0, -0.1, -0.1, 0.1, 0.2, 0.3, 0.1, -0.1, 0.2]
+    };
+
+    const FUNDAMENTAL_FACTORS = [
+      { key: 'economicSurprise', label: '1. Auto Economic Surprise Z-Score', hint: 'Auto-linked to Actual vs. Consensus Engine & Beta Matrix (non-redundant)', autoLocked: true, sourceTag: 'AUTO: SURPRISE ENGINE' },
+      { key: 'monetaryPolicy', label: '2. Central Bank Policy & Rate Path', hint: 'Forward rate-cut/hike trajectory & 2Y yield slope' },
+      { key: 'realYields', label: '3. Real Yields & System Liquidity', hint: '10Y TIPS real yields & central bank balance sheet impulse' },
+      { key: 'earningsDemand', label: '4. Earnings / Physical Structural Demand', hint: 'Forward EPS revisions (equities) or central bank bullion buying (gold)' },
+      { key: 'currencyImpulse', label: '5. Currency & FX Impulse (DXY / JPY / EUR)', hint: 'Dollar liquidity drag & exporter FX translation' }
+    ];
+
+    const SENTIMENT_FACTORS = [
+      { key: 'fearGreedOverlay', label: '1. Auto CNN Fear & Greed Contrarian', hint: 'Auto-linked to 0–100 Fear & Greed Gauge (non-redundant)', autoLocked: true, sourceTag: 'AUTO: FEAR & GREED' },
+      { key: 'priceStructure', label: '2. Price Structure & 50/200 SMA Distance', hint: 'Distance vs 50-day & 200-day SMAs + trend momentum' },
+      { key: 'cotPositioning', label: '3. COT Institutional Positioning & Shift', hint: 'CFTC Net Long/Short % & weekly institutional flow' },
+      { key: 'crossAssetVol', label: '4. Cross-Asset Volatility & Credit Spreads', hint: 'VIX regime, bond MOVE index & high-yield spreads' },
+      { key: 'seasonalityCatalyst', label: '5. Seasonality & Geopolitical Risk Premium', hint: 'Historical seasonal bias & safe-haven event premium' }
+    ];
+
+    // 7 Assets Baseline (Late November 2026 Market Calibration)
+    const DEFAULT_ASSETS = {
+      US500: {
+        id: 'US500',
+        symbol: '^GSPC',
+        name: 'S&P 500 Index',
+        shortName: 'S&P 500',
+        category: 'US Large Cap Benchmark',
+        price: 6910.00,
+        prevClose: 6948.20,
+        changePct: -0.55,
+        sma50: 6840.00,
+        sma200: 6490.00,
+        source: 'Nov 2026 Baseline',
+        nextCatalyst: 'Dec 10 FOMC & Nov CPI',
+        seasonalityBase: 0.65,
+        cot: { longPct: 42.7, weeklyChangePct: 4.27 },
+        divergenceNote: 'Balanced 1.0x–1.1x macro sensitivity. Strong GDP (3.4%) & NFP (165k) support earnings, while +4.27% weekly COT short-covering, late-Nov seasonality (+0.65), and Extreme Fear (14) cushion hawkish 2Y yields.',
+        fundamental: { monetaryPolicy: -0.6, realYields: -0.5, economicSurprise: -0.1, earningsDemand: 0.4, currencyImpulse: -0.2 },
+        sentiment: { priceStructure: 0.3, cotPositioning: 0.4, fearGreedOverlay: 0.9, crossAssetVol: -0.4, seasonalityCatalyst: 0.7 }
+      },
+      US100: {
+        id: 'US100',
+        symbol: '^NDX',
+        name: 'Nasdaq 100 Index',
+        shortName: 'Nasdaq 100',
+        category: 'US Mega-Cap Tech / Growth',
+        price: 22618.00,
+        prevClose: 22890.10,
+        changePct: -1.19,
+        sma50: 22750.00,
+        sma200: 21400.00,
+        source: 'Nov 2026 Baseline',
+        nextCatalyst: 'Dec 10 FOMC & AI Capex',
+        seasonalityBase: 0.55,
+        cot: { longPct: 54.2, weeklyChangePct: -1.85 },
+        divergenceNote: 'High duration sensitivity (1.6x Rates, 1.5x CPI) penalizes long-dated tech multiples when sticky 3.8% CPI keeps 10Y yields near 4.92%. Foreign revenue exposure (1.2x USD drag) adds mild headwind vs. Dow Jones.',
+        fundamental: { monetaryPolicy: -0.8, realYields: -0.8, economicSurprise: -0.4, earningsDemand: 0.5, currencyImpulse: -0.3 },
+        sentiment: { priceStructure: -0.2, cotPositioning: -0.1, fearGreedOverlay: 0.9, crossAssetVol: -0.5, seasonalityCatalyst: 0.6 }
+      },
+      US30: {
+        id: 'US30',
+        symbol: '^DJI',
+        name: 'Dow Jones Industrial Average',
+        shortName: 'Dow Jones 30',
+        category: 'US Blue-Chip Value / Industrials',
+        price: 48147.00,
+        prevClose: 48025.40,
+        changePct: 0.25,
+        sma50: 47480.00,
+        sma200: 45200.00,
+        source: 'Nov 2026 Baseline',
+        nextCatalyst: 'Nov ISM Mfg & Durable Goods',
+        seasonalityBase: 0.70,
+        cot: { longPct: 51.8, weeklyChangePct: 3.10 },
+        divergenceNote: 'Significantly more bullish than Russell 2000: low 0.6x Rate sensitivity (cash-rich blue chips) insulates US30 from rising 2Y yields, while high 1.4x Growth beta captures 3.4% GDP and 55.5 Manufacturing PMI beats.',
+        fundamental: { monetaryPolicy: -0.4, realYields: -0.3, economicSurprise: 0.3, earningsDemand: 0.5, currencyImpulse: -0.1 },
+        sentiment: { priceStructure: 0.6, cotPositioning: 0.4, fearGreedOverlay: 0.9, crossAssetVol: -0.3, seasonalityCatalyst: 0.7 }
+      },
+      US2000: {
+        id: 'US2000',
+        symbol: '^RUT',
+        name: 'Russell 2000 Index',
+        shortName: 'Russell 2000',
+        category: 'US Domestic Small Caps',
+        price: 2582.00,
+        prevClose: 2624.80,
+        changePct: -1.63,
+        sma50: 2630.00,
+        sma200: 2460.00,
+        source: 'Nov 2026 Baseline',
+        nextCatalyst: 'Dec 10 FOMC & Jobless Claims',
+        seasonalityBase: 0.45,
+        cot: { longPct: 36.4, weeklyChangePct: -2.40 },
+        divergenceNote: 'Highest macro beta in equities: 1.8x Rate sensitivity (heavy floating-rate debt refinancing burden) weighs heavily in an Inflation-Focus regime, though -0.5x USD beta cushions domestic revenues from DXY strength.',
+        fundamental: { monetaryPolicy: -0.9, realYields: -0.8, economicSurprise: -0.3, earningsDemand: -0.2, currencyImpulse: 0.2 },
+        sentiment: { priceStructure: -0.5, cotPositioning: -0.4, fearGreedOverlay: 1.0, crossAssetVol: -0.6, seasonalityCatalyst: 0.5 }
+      },
+      GER40: {
+        id: 'GER40',
+        symbol: '^GDAXI',
+        name: 'DAX 40 Index',
+        shortName: 'DAX 40',
+        category: 'Eurozone Industrial Exporters',
+        price: 24803.00,
+        prevClose: 24940.00,
+        changePct: -0.55,
+        sma50: 24580.00,
+        sma200: 23200.00,
+        source: 'Nov 2026 Baseline',
+        nextCatalyst: 'Dec 12 ECB Policy & Euro CPI',
+        seasonalityBase: 0.50,
+        cot: { longPct: 48.5, weeklyChangePct: 1.15 },
+        divergenceNote: 'Export-heavy German industrials carry 1.3x global growth/PMI sensitivity (benefiting from 55.5 PMI) and -0.3x USD sensitivity as softer EUR improves export competitiveness.',
+        fundamental: { monetaryPolicy: -0.5, realYields: -0.4, economicSurprise: 0.1, earningsDemand: 0.2, currencyImpulse: 0.1 },
+        sentiment: { priceStructure: 0.4, cotPositioning: 0.2, fearGreedOverlay: 0.8, crossAssetVol: -0.4, seasonalityCatalyst: 0.5 }
+      },
+      JP225: {
+        id: 'JP225',
+        symbol: '^N225',
+        name: 'Nikkei 225 Index',
+        shortName: 'Nikkei 225',
+        category: 'Japan Exporters & Tech',
+        price: 56437.00,
+        prevClose: 56870.00,
+        changePct: -0.76,
+        sma50: 55800.00,
+        sma200: 52400.00,
+        source: 'Nov 2026 Baseline',
+        nextCatalyst: 'Dec 18 BoJ Rate Decision',
+        seasonalityBase: 0.40,
+        cot: { longPct: 58.0, weeklyChangePct: -1.10 },
+        divergenceNote: 'Carries inverse -0.9x USD sensitivity: firm US yields and DXY (103.81) keep USD/JPY elevated, boosting Japanese exporter repatriated profits despite BoJ rate-hike chatter (1.1x Rate beta).',
+        fundamental: { monetaryPolicy: -0.6, realYields: -0.4, economicSurprise: 0.0, earningsDemand: 0.4, currencyImpulse: 0.4 },
+        sentiment: { priceStructure: 0.5, cotPositioning: 0.1, fearGreedOverlay: 0.8, crossAssetVol: -0.4, seasonalityCatalyst: 0.4 }
+      },
+      XAUUSD: {
+        id: 'XAUUSD',
+        symbol: 'GC=F',
+        name: 'Gold Spot / Futures',
+        shortName: 'Gold (XAU/USD)',
+        category: 'Monetary Metal & Safe Haven',
+        price: 3535.00,
+        prevClose: 3610.50,
+        changePct: -2.09,
+        sma50: 3640.00,
+        sma200: 3390.00,
+        source: 'Nov 2026 Baseline',
+        nextCatalyst: 'Dec 10 FOMC & TIPS Real Yield',
+        seasonalityBase: -0.35,
+        cot: { longPct: 82.71, weeklyChangePct: -3.52 },
+        divergenceNote: 'Unlike rigid checklists that score Gold -9 by double-counting 14 US data beats, our 50/50 model balances hawkish 2Y/10Y yields (1.7x beta), strong DXY (1.8x beta), and -3.52% COT long trimming against structural central bank buying (+0.6) and Extreme Fear safe-haven demand (+0.65).',
+        fundamental: { monetaryPolicy: -0.8, realYields: -0.8, economicSurprise: -0.6, earningsDemand: 0.6, currencyImpulse: -0.5 },
+        sentiment: { priceStructure: -0.65, cotPositioning: -0.3, fearGreedOverlay: 0.7, crossAssetVol: 0.2, seasonalityCatalyst: -0.4 }
+      }
+    };
+
+    const DEFAULT_MACRO = {
+      us10y: { val: 4.92, chgBps: 5.0 },
+      us2y: { val: 4.68 },
+      vix: { val: 24.85, chgPct: 8.4 },
+      dxy: { val: 103.81, chgPct: 0.35 }
+    };
+
+    // Pre-populated Historical Snapshots (Oct–Nov 2026) so Score History & Backtest Log works immediately
+    const SEED_HISTORY_SNAPSHOTS = [
+      // Gold (XAUUSD) trajectory: peak rally in Oct -> breakdown in Nov
+      { id: 'seed-xau-1', timestamp: '2026-10-12 16:00', assetId: 'XAUUSD', fundScore: 2.6, sentScore: 3.0, compositeScore: 2.8, entryPrice: 3890.00, followUpPrice: 3965.00, regime: 'inflation' },
+      { id: 'seed-xau-2', timestamp: '2026-10-22 16:00', assetId: 'XAUUSD', fundScore: 1.4, sentScore: 1.8, compositeScore: 1.6, entryPrice: 3965.00, followUpPrice: 3880.00, regime: 'inflation' },
+      { id: 'seed-xau-3', timestamp: '2026-11-02 16:00', assetId: 'XAUUSD', fundScore: -0.6, sentScore: -0.8, compositeScore: -0.7, entryPrice: 3880.00, followUpPrice: 3745.00, regime: 'inflation' },
+      { id: 'seed-xau-4', timestamp: '2026-11-11 16:00', assetId: 'XAUUSD', fundScore: -1.8, sentScore: -2.2, compositeScore: -2.0, entryPrice: 3745.00, followUpPrice: 3610.50, regime: 'inflation' },
+      { id: 'seed-xau-5', timestamp: '2026-11-18 16:00', assetId: 'XAUUSD', fundScore: -2.1, sentScore: -1.9, compositeScore: -2.0, entryPrice: 3610.50, followUpPrice: 3535.00, regime: 'inflation' },
+
+      // S&P 500 (US500) trajectory
+      { id: 'seed-spx-1', timestamp: '2026-10-12 16:00', assetId: 'US500', fundScore: 1.8, sentScore: 2.4, compositeScore: 2.1, entryPrice: 6780.00, followUpPrice: 6895.00, regime: 'growth' },
+      { id: 'seed-spx-2', timestamp: '2026-10-22 16:00', assetId: 'US500', fundScore: 1.2, sentScore: 2.0, compositeScore: 1.6, entryPrice: 6895.00, followUpPrice: 6985.00, regime: 'growth' },
+      { id: 'seed-spx-3', timestamp: '2026-11-02 16:00', assetId: 'US500', fundScore: 0.4, sentScore: 1.4, compositeScore: 0.9, entryPrice: 6985.00, followUpPrice: 6960.00, regime: 'inflation' },
+      { id: 'seed-spx-4', timestamp: '2026-11-11 16:00', assetId: 'US500', fundScore: -0.8, sentScore: 1.2, compositeScore: 0.2, entryPrice: 6960.00, followUpPrice: 6948.20, regime: 'inflation' },
+      { id: 'seed-spx-5', timestamp: '2026-11-18 16:00', assetId: 'US500', fundScore: -1.0, sentScore: 1.9, compositeScore: 0.5, entryPrice: 6948.20, followUpPrice: 6910.00, regime: 'inflation' },
+
+      // Dow Jones (US30) trajectory
+      { id: 'seed-us30-1', timestamp: '2026-10-12 16:00', assetId: 'US30', fundScore: 2.0, sentScore: 2.6, compositeScore: 2.3, entryPrice: 46520.00, followUpPrice: 47180.00, regime: 'growth' },
+      { id: 'seed-us30-2', timestamp: '2026-10-22 16:00', assetId: 'US30', fundScore: 1.6, sentScore: 2.2, compositeScore: 1.9, entryPrice: 47180.00, followUpPrice: 47690.00, regime: 'growth' },
+      { id: 'seed-us30-3', timestamp: '2026-11-02 16:00', assetId: 'US30', fundScore: 1.1, sentScore: 1.9, compositeScore: 1.5, entryPrice: 47690.00, followUpPrice: 47910.00, regime: 'inflation' },
+      { id: 'seed-us30-4', timestamp: '2026-11-11 16:00', assetId: 'US30', fundScore: 0.2, sentScore: 2.1, compositeScore: 1.2, entryPrice: 47910.00, followUpPrice: 48025.40, regime: 'inflation' },
+      { id: 'seed-us30-5', timestamp: '2026-11-18 16:00', assetId: 'US30', fundScore: 0.0, sentScore: 2.3, compositeScore: 1.2, entryPrice: 48025.40, followUpPrice: 48147.00, regime: 'inflation' },
+
+      // Nasdaq 100 (US100) trajectory
+      { id: 'seed-us100-1', timestamp: '2026-10-12 16:00', assetId: 'US100', fundScore: 1.5, sentScore: 2.5, compositeScore: 2.0, entryPrice: 22450.00, followUpPrice: 23050.00, regime: 'growth' },
+      { id: 'seed-us100-2', timestamp: '2026-11-02 16:00', assetId: 'US100', fundScore: -0.6, sentScore: 0.8, compositeScore: 0.1, entryPrice: 23050.00, followUpPrice: 22890.10, regime: 'inflation' },
+      { id: 'seed-us100-3', timestamp: '2026-11-15 16:00', assetId: 'US100', fundScore: -1.8, sentScore: 0.5, compositeScore: -0.7, entryPrice: 22890.10, followUpPrice: 22618.00, regime: 'inflation' },
+
+      // Russell 2000 (US2000) trajectory
+      { id: 'seed-us2000-1', timestamp: '2026-10-15 16:00', assetId: 'US2000', fundScore: 1.4, sentScore: 1.8, compositeScore: 1.6, entryPrice: 2540.00, followUpPrice: 2645.00, regime: 'growth' },
+      { id: 'seed-us2000-2', timestamp: '2026-11-05 16:00', assetId: 'US2000', fundScore: -1.5, sentScore: -0.4, compositeScore: -1.0, entryPrice: 2645.00, followUpPrice: 2624.80, regime: 'inflation' },
+      { id: 'seed-us2000-3', timestamp: '2026-11-16 16:00', assetId: 'US2000', fundScore: -2.0, sentScore: -0.3, compositeScore: -1.2, entryPrice: 2624.80, followUpPrice: 2582.00, regime: 'inflation' }
+    ];
+
+    // =========================================================================
+    // 2. APPLICATION STATE & LOCALSTORAGE PERSISTENCE
+    // =========================================================================
+    let state = {
+      activeTab: 'terminal', // 'terminal' or 'history'
+      selectedAssetId: 'US30',
+      historyFilterAsset: 'ALL',
+      historyChartAsset: 'XAUUSD',
+      scoringMode: 'quant', // 'quant' or 'manual'
+      macroRegime: 'inflation', // 'inflation' (Good=Bad) or 'growth' (Good=Good)
+      regimeNote: 'Sticky 3.8% CPI & resilient 165k NFP keep Fed hawkish for Dec; strong data pressures rate-sensitive multiples & gold.',
+      betaLocked: true, // Locked by default to prevent daily curve-fitting
+      fearGreedIndex: 14,
+      fearGreedMode: 'contrarian', // 'contrarian' or 'linear'
+      countdown: 300,
+      indicators: JSON.parse(JSON.stringify(ECONOMIC_INDICATORS)),
+      betaWeights: JSON.parse(JSON.stringify(DEFAULT_BETA_WEIGHTS)),
+      macro: JSON.parse(JSON.stringify(DEFAULT_MACRO)),
+      assets: JSON.parse(JSON.stringify(DEFAULT_ASSETS)),
+      historyLog: []
+    };
+
+    function loadSavedState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.selectedAssetId && state.assets[parsed.selectedAssetId]) {
+            state.selectedAssetId = parsed.selectedAssetId;
+          }
+          if (parsed.scoringMode) state.scoringMode = parsed.scoringMode;
+          if (parsed.macroRegime) state.macroRegime = parsed.macroRegime;
+          if (typeof parsed.regimeNote === 'string') state.regimeNote = parsed.regimeNote;
+          if (typeof parsed.betaLocked === 'boolean') state.betaLocked = parsed.betaLocked;
+          if (typeof parsed.fearGreedIndex === 'number') state.fearGreedIndex = clamp(parsed.fearGreedIndex, 0, 100);
+          if (parsed.fearGreedMode) state.fearGreedMode = parsed.fearGreedMode;
+          if (Array.isArray(parsed.indicators)) {
+            parsed.indicators.forEach(savedInd => {
+              const target = state.indicators.find(i => i.id === savedInd.id);
+              if (target) {
+                if (typeof savedInd.actual === 'number') target.actual = savedInd.actual;
+                if (typeof savedInd.expected === 'number') target.expected = savedInd.expected;
+              }
+            });
+          }
+          if (parsed.betaWeights) {
+            Object.keys(state.betaWeights).forEach(k => {
+              if (parsed.betaWeights[k]) state.betaWeights[k] = { ...state.betaWeights[k], ...parsed.betaWeights[k] };
+            });
+          }
+          if (parsed.assets) {
+            Object.keys(state.assets).forEach(k => {
+              if (parsed.assets[k]) {
+                if (parsed.assets[k].fundamental) {
+                  state.assets[k].fundamental = { ...state.assets[k].fundamental, ...parsed.assets[k].fundamental };
+                }
+                if (parsed.assets[k].sentiment) {
+                  state.assets[k].sentiment = { ...state.assets[k].sentiment, ...parsed.assets[k].sentiment };
+                }
+                if (parsed.assets[k].cot) {
+                  state.assets[k].cot = { ...state.assets[k].cot, ...parsed.assets[k].cot };
+                }
+                if (typeof parsed.assets[k].nextCatalyst === 'string') {
+                  state.assets[k].nextCatalyst = parsed.assets[k].nextCatalyst;
+                }
+              }
+            });
+          }
+        }
+
+        // Load History Log
+        const rawHist = localStorage.getItem(HISTORY_STORAGE_KEY);
+        if (rawHist) {
+          const parsedHist = JSON.parse(rawHist);
+          state.historyLog = Array.isArray(parsedHist) && parsedHist.length > 0
+            ? parsedHist
+            : JSON.parse(JSON.stringify(SEED_HISTORY_SNAPSHOTS));
+        } else {
+          state.historyLog = JSON.parse(JSON.stringify(SEED_HISTORY_SNAPSHOTS));
+          saveHistory();
+        }
+      } catch (e) {
+        console.warn('Unable to load saved terminal state:', e);
+        state.historyLog = JSON.parse(JSON.stringify(SEED_HISTORY_SNAPSHOTS));
+      }
+    }
+
+    function saveState() {
+      try {
+        const payload = {
+          selectedAssetId: state.selectedAssetId,
+          scoringMode: state.scoringMode,
+          macroRegime: state.macroRegime,
+          regimeNote: state.regimeNote,
+          betaLocked: state.betaLocked,
+          fearGreedIndex: state.fearGreedIndex,
+          fearGreedMode: state.fearGreedMode,
+          indicators: state.indicators.map(i => ({ id: i.id, actual: i.actual, expected: i.expected })),
+          betaWeights: state.betaWeights,
+          assets: Object.fromEntries(
+            Object.entries(state.assets).map(([k, v]) => [k, {
+              fundamental: v.fundamental,
+              sentiment: v.sentiment,
+              cot: v.cot,
+              nextCatalyst: v.nextCatalyst
+            }])
+          )
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      } catch (e) {
+        console.warn('Unable to save state:', e);
+      }
+    }
+
+    function saveHistory() {
+      try {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(state.historyLog));
+      } catch (e) {
+        console.warn('Unable to save history log:', e);
+      }
+    }
+
+    // =========================================================================
+    // 3. QUANTITATIVE SCORING, CAUTION TAGS & SURPRISE ENGINE
+    // =========================================================================
+    function clamp(val, min, max) {
+      return Math.max(min, Math.min(max, val));
+    }
+
+    function round1(val) {
+      return Math.round(val * 10) / 10;
+    }
+
+    function computeIndicatorSurprises() {
+      return state.indicators.map(ind => {
+        const rawDiff = ind.actual - ind.expected;
+        const directionalDiff = ind.invertRawSurprise ? -rawDiff : rawDiff;
+        const rawZ = clamp(directionalDiff / ind.stdDev, -1.0, 1.0);
+        let rel = new Date(`${ind.releaseDate} ${new Date().getFullYear()}`);
+        if (isNaN(rel)) rel = new Date();
+        if (rel > new Date()) rel.setFullYear(rel.getFullYear() - 1);
+        const ageDays = Math.max(0, (Date.now() - rel.getTime()) / 86400000);
+        const decay = Math.exp(-ageDays / 21);
+        const zScore = rawZ * decay;
+        return {
+          ...ind,
+          rawDiff,
+          ageDays: Math.round(ageDays),
+          decay,
+          zScore: round1(zScore)
+        };
+      });
+    }
+
+    function computeFearGreedSignals() {
+      const fg = state.fearGreedIndex;
+      let zone = 'NEUTRAL';
+      let badgeClass = 'bg-gray-800 text-gray-300 border-gray-700';
+
+      if (fg <= 20) {
+        zone = `EXTREME FEAR (${fg})`;
+        badgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+      } else if (fg <= 44) {
+        zone = `FEAR (${fg})`;
+        badgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+      } else if (fg <= 55) {
+        zone = `NEUTRAL (${fg})`;
+        badgeClass = 'bg-gray-800 text-gray-300 border-gray-700';
+      } else if (fg <= 79) {
+        zone = `GREED (${fg})`;
+        badgeClass = 'bg-blue-500/20 text-blue-300 border-blue-500/40';
+      } else {
+        zone = `EXTREME GREED (${fg})`;
+        badgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+      }
+
+      let equityScore = 0;
+      let goldScore = 0;
+
+      if (state.fearGreedMode === 'contrarian') {
+        if (fg <= 20) {
+          equityScore = round1(0.75 + ((20 - fg) / 20) * 0.25);
+          goldScore = round1(0.55 + ((20 - fg) / 20) * 0.25);
+        } else if (fg <= 44) {
+          equityScore = -0.25;
+          goldScore = 0.20;
+        } else if (fg <= 55) {
+          equityScore = 0.0;
+          goldScore = 0.0;
+        } else if (fg <= 79) {
+          equityScore = 0.35;
+          goldScore = -0.15;
+        } else {
+          equityScore = round1(-0.75 - ((fg - 80) / 20) * 0.25);
+          goldScore = 0.30;
+        }
+      } else {
+        equityScore = round1(((fg - 50) / 50) * 0.9);
+        goldScore = round1(-((fg - 50) / 50) * 0.6);
+      }
+
+      const FG_W = 0.5;
+      return { fg, zone, badgeClass, equityScore: round1(equityScore * FG_W), goldScore: round1(goldScore * FG_W) };
+    }
+
+    // Always sync the 2 auto-derived slots (Economic Surprise & Fear/Greed) so they stay non-redundant
+    function syncAutoDerivedSlots() {
+      const surprises = computeIndicatorSurprises();
+      const sMap = Object.fromEntries(surprises.map(s => [s.id, s.zScore]));
+      const fgSignals = computeFearGreedSignals();
+      const growthRegimeSign = state.macroRegime === 'inflation' ? -0.45 : 0.85;
+
+      Object.values(state.assets).forEach(asset => {
+        const b = state.betaWeights[asset.id];
+        const isGold = asset.id === 'XAUUSD';
+
+        const cpiTerm = (-sMap.cpi) * b.cpi;
+        const laborTerm = (sMap.unemployment * growthRegimeSign) * b.labor;
+        const growthTerm = (((sMap.gdp + sMap.pmi) / 2) * growthRegimeSign) * b.growth;
+        const aggSurprise = (cpiTerm + laborTerm + growthTerm) / 3.0;
+        asset.fundamental.economicSurprise = round1(clamp(aggSurprise, -1.0, 1.0));
+
+        asset.sentiment.fearGreedOverlay = isGold ? fgSignals.goldScore : fgSignals.equityScore;
+      });
+    }
+
+    function applyQuantModel() {
+      syncAutoDerivedSlots();
+      if (state.scoringMode !== 'quant') return;
+
+      const surprises = computeIndicatorSurprises();
+      const sMap = Object.fromEntries(surprises.map(s => [s.id, s.zScore]));
+
+      const us10y = state.macro.us10y.val;
+      const vix = state.macro.vix.val;
+      const dxy = state.macro.dxy.val;
+
+      Object.values(state.assets).forEach(asset => {
+        const b = state.betaWeights[asset.id];
+        const isGold = asset.id === 'XAUUSD';
+
+        // Central Bank Policy & Rate Path
+        const zs = (m, fbMu, fbSd) => {
+          const mu = state.macro[m].mu, sd = state.macro[m].sd;
+          return (mu && sd) ? clamp((state.macro[m].val - mu) / (2 * sd), -1, 1) : clamp((state.macro[m].val - fbMu) / fbSd, -1, 1);
+        };
+        const rateStress = zs('us10y', 4.15, 0.95);
+        const yieldShock = clamp((state.macro.us10y.chgBps || 0) / 12, -1, 1);
+        // Policy = Fed surprise + yield momentum; Real-yield slot = yield LEVEL. Distinct inputs, no double count.
+        const rawRateScore = ((-sMap.rates) * 0.5 + (-yieldShock) * 0.5) * (b.rates / 1.15);
+        asset.fundamental.monetaryPolicy = round1(clamp(rawRateScore, -1.0, 1.0));
+
+        // Real Yields & System Liquidity
+        const ryStress = state.macro.real10y ? zs('real10y', 1.9, 1.0) : rateStress;
+        const realYieldScore = (-ryStress * 0.85) * (b.rates / 1.15);
+        asset.fundamental.realYields = round1(clamp(realYieldScore, -1.0, 1.0));
+
+        // Earnings / Structural Demand
+        const baseStruct = DEFAULT_ASSETS[asset.id].fundamental.earningsDemand;
+        const cycleMod = ((sMap.gdp + sMap.pmi) / 2) * (isGold ? -0.15 : 0.25);
+        asset.fundamental.earningsDemand = round1(clamp(baseStruct + cycleMod, -1.0, 1.0));
+
+        // Currency & FX Impulse
+        const dxyStress = zs('dxy', 101.5, 3.5);
+        const fxScore = -dxyStress * b.usd * 0.65;
+        asset.fundamental.currencyImpulse = round1(clamp(fxScore, -1.0, 1.0));
+
+        // Price Structure & 50/200 SMA Distance
+        const dist50 = (asset.price - asset.sma50) / asset.sma50;
+        const dist200 = (asset.price - asset.sma200) / asset.sma200;
+        const trendScore = clamp((dist50 * 14) + (dist200 * 6) + (asset.changePct * 0.12), -1.0, 1.0);
+        asset.sentiment.priceStructure = round1(trendScore);
+
+        // COT Institutional Positioning & Shift
+        const lp = asset.cot.longPct;
+        const crowd = lp > 75 ? -((lp - 75) / 25) * 0.6 : lp < 25 ? ((25 - lp) / 25) * 0.6 : 0;
+        const netLevelScore = (((clamp(lp, 25, 75)) - 50) / 50) * 0.45 + crowd;
+        const flowMomentumScore = clamp(asset.cot.weeklyChangePct / 5.0, -0.7, 0.7);
+        asset.sentiment.cotPositioning = round1(clamp(netLevelScore + flowMomentumScore, -1.0, 1.0));
+
+        // Cross-Asset Volatility & Credit Spreads
+        const vixStress = zs('vix', 17.5, 13.0);
+        asset.sentiment.crossAssetVol = round1(clamp(isGold ? vixStress * 0.35 : -vixStress * 0.75, -1.0, 1.0));
+
+        // Seasonality & Geopolitical Risk Premium
+        asset.sentiment.seasonalityCatalyst = round1(clamp(SEASON[isGold ? 'GOLD' : 'EQ'][new Date().getMonth()], -1.0, 1.0));
+      });
+    }
+
+    function getAssetScores(asset) {
+      const fVals = Object.values(asset.fundamental);
+      const sVals = Object.values(asset.sentiment);
+
+      const fundScore = round1(clamp(fVals.reduce((acc, v) => acc + v, 0), -5.0, 5.0));
+      const sentScore = round1(clamp(sVals.reduce((acc, v) => acc + v, 0), -5.0, 5.0));
+      const compositeScore = round1(clamp((fundScore + sentScore) / 2, -5.0, 5.0));
+
+      // Oversold Bounce Risk & Overbought Pullback Risk Caution Tags
+      let cautionTag = null;
+      if (asset.sentiment.priceStructure <= -0.60 && state.fearGreedIndex <= 22) {
+        cautionTag = {
+          type: 'bounce',
+          label: 'BOUNCE RISK (RSI < 30)',
+          shortLabel: 'BOUNCE RISK',
+          badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+        };
+      } else if (asset.sentiment.priceStructure >= 0.60 && state.fearGreedIndex >= 78) {
+        cautionTag = {
+          type: 'pullback',
+          label: 'PULLBACK RISK (OVERBOUGHT)',
+          shortLabel: 'PULLBACK RISK',
+          badgeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+        };
+      }
+
+      if (!cautionTag && fundScore * sentScore < 0 && Math.min(Math.abs(fundScore), Math.abs(sentScore)) >= 0.8) {
+        cautionTag = { type: 'conflict', label: 'PILLAR CONFLICT - STAND ASIDE', shortLabel: 'CONFLICT', badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/40' };
+      }
+      return { fundScore, sentScore, compositeScore, cautionTag };
+    }
+
+    function getBiasMeta(score) {
+      if (score >= 2.5) {
+        return {
+          label: 'Strong Bullish',
+          shortLabel: 'STRONG BULL',
+          textClass: 'text-emerald-400',
+          badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+          barColor: '#10b981'
+        };
+      }
+      if (score >= 1.0) {
+        return {
+          label: 'Moderate Bullish',
+          shortLabel: 'MOD BULLISH',
+          textClass: 'text-emerald-300',
+          badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+          barColor: '#34d399'
+        };
+      }
+      if (score > -1.0) {
+        return {
+          label: 'Neutral / Range',
+          shortLabel: 'NEUTRAL',
+          textClass: 'text-gray-300',
+          badgeClass: 'bg-gray-800 text-gray-300 border-gray-700',
+          barColor: '#94a3b8'
+        };
+      }
+      if (score > -2.5) {
+        return {
+          label: 'Moderate Bearish',
+          shortLabel: 'MOD BEARISH',
+          textClass: 'text-rose-300',
+          badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+          barColor: '#fb7185'
+        };
+      }
+      return {
+        label: 'Strong Bearish',
+        shortLabel: 'STRONG BEAR',
+        textClass: 'text-rose-400',
+        badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+        barColor: '#f43f5e'
+      };
+    }
+
+    function formatSignedScore(num) {
+      const fixed = Number(num).toFixed(1);
+      return num > 0 ? `+${fixed}` : fixed;
+    }
+
+    function formatPrice(asset) {
+      return asset.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // =========================================================================
+    // 4. LIVE API AUTO-SYNC ENGINE (WITH RESILIENT FALLBACK)
+    // =========================================================================
+    async function fetchYahooQuote(symbol) {
+      const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(endpoint)}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5500);
+
+      try {
+        const res = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!res.ok) throw new Error('Network error');
+        const json = await res.json();
+        const result = json?.chart?.result?.[0];
+        if (!result) throw new Error('Malformed payload');
+
+        const meta = result.meta;
+        const closes = (result.indicators?.quote?.[0]?.close || []).filter(v => typeof v === 'number' && !isNaN(v));
+        const price = meta.regularMarketPrice || closes[closes.length - 1];
+        const prevClose = closes[closes.length - 2] || meta.chartPreviousClose || price;
+        const changePct = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+
+        const slice50 = closes.slice(-50);
+        const slice200 = closes.slice(-200);
+        const sma50 = slice50.length ? slice50.reduce((a, b) => a + b, 0) / slice50.length : price;
+        const sma200 = slice200.length ? slice200.reduce((a, b) => a + b, 0) / slice200.length : price;
+
+        const s60 = closes.slice(-60);
+        const mu = s60.length ? s60.reduce((a, b) => a + b, 0) / s60.length : null;
+        const sd = s60.length > 5 ? Math.sqrt(s60.reduce((a, b) => a + (b - mu) ** 2, 0) / s60.length) : null;
+        return { price, prevClose, changePct, sma50, sma200, mu, sd };
+      } catch (_) {
+        clearTimeout(timeoutId);
+        return null;
+      }
+    }
+
+    async function syncLiveMarketData(isManualClick = false) {
+      const spinner = document.getElementById('sync-spinner');
+      const statusText = document.getElementById('sync-status-text');
+      const statusPulse = document.getElementById('sync-pulse');
+
+      if (spinner) spinner.classList.add('animate-spin');
+      if (statusText) statusText.textContent = 'SYNCING TELEMETRY...';
+      if (statusPulse) statusPulse.className = 'w-2 h-2 rounded-full bg-blue-400 animate-ping';
+
+      const assetList = Object.values(state.assets);
+      const quotePromises = assetList.map(a => fetchYahooQuote(a.symbol));
+      const macroPromises = [
+        fetchYahooQuote('^TNX'),
+        fetchYahooQuote('^VIX'),
+        fetchYahooQuote('DX-Y.NYB')
+      ];
+
+      const [assetResults, macroResults] = await Promise.all([
+        Promise.all(quotePromises),
+        Promise.all(macroPromises)
+      ]);
+
+      let liveSuccessCount = 0;
+
+      assetResults.forEach((quote, idx) => {
+        if (quote && typeof quote.price === 'number' && !isNaN(quote.price)) {
+          const asset = assetList[idx];
+          asset.price = quote.price;
+          asset.prevClose = quote.prevClose;
+          asset.changePct = quote.changePct;
+          asset.sma50 = quote.sma50;
+          asset.sma200 = quote.sma200;
+          asset.source = 'Live Feed';
+          liveSuccessCount++;
+        }
+      });
+
+      const [tnxQuote, vixQuote, dxyQuote] = macroResults;
+      if (tnxQuote && tnxQuote.price > 0) {
+        state.macro.us10y.val = tnxQuote.price; state.macro.us10y.mu = tnxQuote.mu; state.macro.us10y.sd = tnxQuote.sd;
+        state.macro.us10y.chgBps = (tnxQuote.price - tnxQuote.prevClose) * 100;
+      }
+      if (vixQuote && vixQuote.price > 0) {
+        state.macro.vix.val = vixQuote.price; state.macro.vix.mu = vixQuote.mu; state.macro.vix.sd = vixQuote.sd;
+        state.macro.vix.chgPct = vixQuote.changePct;
+      }
+      if (dxyQuote && dxyQuote.price > 0) {
+        state.macro.dxy.val = dxyQuote.price; state.macro.dxy.mu = dxyQuote.mu; state.macro.dxy.sd = dxyQuote.sd;
+        state.macro.dxy.chgPct = dxyQuote.changePct;
+      }
+
+      const snapAge = state.autoUpdated ? (Date.now() - state.autoUpdated) / 3600000 : null;
+      const snapOk = snapAge !== null && snapAge < 36;
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dateShort = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+      if (liveSuccessCount > 0) {
+        statusText.textContent = `LIVE FEED (${liveSuccessCount}/${assetList.length}) • ${dateShort} ${nowStr}`;
+        statusPulse.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        statusText.className = 'text-gray-200 text-[11px]';
+      } else {
+        if (snapOk) {
+          statusText.textContent = `SNAPSHOT data.json (${snapAge.toFixed(0)}h old) • live feed down`;
+          statusText.className = 'text-amber-300 text-[11px]';
+          statusPulse.className = 'w-2 h-2 rounded-full bg-amber-400';
+        } else {
+          statusText.textContent = `OFFLINE: STALE BASELINE, DO NOT TRADE OFF THESE SCORES • ${nowStr}`;
+          statusText.className = 'text-rose-300 text-[11px] font-bold';
+          statusPulse.className = 'w-2 h-2 rounded-full bg-rose-500';
+        }
+      }
+
+      state.countdown = 300;
+      applyQuantModel();
+      if (liveSuccessCount > 0 || snapOk) checkAutoDailySnapshot();
+      if (spinner) spinner.classList.remove('animate-spin');
+      renderAll();
+
+      if (isManualClick) {
+        showToast(
+          liveSuccessCount > 0
+            ? `Synced ${liveSuccessCount} live market feeds & recalculated all 7 assets.`
+            : 'Public proxy rate-limited — active on calibrated Nov 2026 baseline.',
+          liveSuccessCount > 0 ? 'emerald' : 'amber'
+        );
+      }
+    }
+
+    // =========================================================================
+    // 5. SCORING HISTORY, AUTOMATIC DAILY SNAPSHOT & BACKTEST ANALYTICS
+    // =========================================================================
+    function getTodayDateString() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function getFormattedTimestamp() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const min = String(now.getMinutes()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    }
+
+    function checkAutoDailySnapshot() {
+      try {
+        const today = getTodayDateString();
+        const lastAuto = localStorage.getItem(LAST_AUTO_LOG_DATE_KEY);
+        if (lastAuto !== today) {
+          logCurrentSnapshot(false);
+          localStorage.setItem(LAST_AUTO_LOG_DATE_KEY, today);
+        }
+      } catch (_) {}
+    }
+
+    function logCurrentSnapshot(showNotification = true) {
+      const ts = getFormattedTimestamp();
+      Object.values(state.assets).forEach(asset => {
+        const { fundScore, sentScore, compositeScore } = getAssetScores(asset);
+        state.historyLog.push({
+          id: `snap-${asset.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: ts,
+          assetId: asset.id,
+          fundScore,
+          sentScore,
+          compositeScore,
+          entryPrice: asset.price,
+          followUpPrice: null, // Editable once +5d / +10d outcome occurs
+          regime: state.macroRegime
+        });
+      });
+      saveHistory();
+      renderAll();
+      if (showNotification) {
+        showToast(`Logged snapshot for all 7 assets (${ts}) into Score History.`, 'emerald');
+      }
+    }
+
+    function evaluateHistoryRow(entry) {
+      const asset = state.assets[entry.assetId];
+      // Use explicit followUpPrice if recorded, otherwise compare against current live spot price for open evaluation
+      const evalPrice = (typeof entry.followUpPrice === 'number' && !isNaN(entry.followUpPrice) && entry.followUpPrice > 0)
+        ? entry.followUpPrice
+        : (asset ? asset.price : null);
+
+      const isManualFollowUp = typeof entry.followUpPrice === 'number' && !isNaN(entry.followUpPrice) && entry.followUpPrice > 0;
+      if (!evalPrice || !entry.entryPrice) {
+        return { retPct: null, status: 'OPEN', isHit: null, isManualFollowUp: false };
+      }
+
+      const retPct = ((evalPrice - entry.entryPrice) / entry.entryPrice) * 100;
+      const score = entry.compositeScore;
+
+      if (Math.abs(score) < 0.8) {
+        // Neutral band: hit if price stayed relatively range-bound (< 2.5% move)
+        const isHit = Math.abs(retPct) <= 2.5;
+        return { retPct, status: isHit ? 'RANGE HIT' : 'BREAKOUT', isHit, isManualFollowUp };
+      }
+
+      const predictedBull = score >= 0.8;
+      const actualBull = retPct > 0;
+      const isHit = (predictedBull && actualBull) || (!predictedBull && !actualBull);
+
+      return {
+        retPct,
+        status: isHit ? 'HIT' : 'MISS',
+        isHit,
+        isManualFollowUp
+      };
+    }
+
+    function computeCalibrationStats() {
+      const evaluated = state.historyLog
+        .map(row => ({ row, eval: evaluateHistoryRow(row) }))
+        .filter(item => !String(item.row.id).startsWith('seed-') && item.eval.retPct !== null && Math.abs(item.row.compositeScore) >= 0.8);
+
+      const totalDirectional = evaluated.length;
+      const totalHits = evaluated.filter(i => i.eval.isHit).length;
+      const overallHitRate = totalDirectional ? (totalHits / totalDirectional) * 100 : 0;
+
+      // High conviction (>= +1.5 or <= -1.5)
+      const highConv = evaluated.filter(i => Math.abs(i.row.compositeScore) >= 1.5);
+      const highConvHits = highConv.filter(i => i.eval.isHit).length;
+      const highConvRate = highConv.length ? (highConvHits / highConv.length) * 100 : 0;
+
+      // Compare Fundamental-led vs Sentiment-led accuracy to recommend weight tuning
+      let fundAlignedHits = 0;
+      let sentAlignedHits = 0;
+      evaluated.forEach(({ row, eval: ev }) => {
+        const actualBull = ev.retPct > 0;
+        if ((row.fundScore > 0 && actualBull) || (row.fundScore < 0 && !actualBull)) fundAlignedHits++;
+        if ((row.sentScore > 0 && actualBull) || (row.sentScore < 0 && !actualBull)) sentAlignedHits++;
+      });
+
+      const fundRate = totalDirectional ? (fundAlignedHits / totalDirectional) * 100 : 50;
+      const sentRate = totalDirectional ? (sentAlignedHits / totalDirectional) * 100 : 50;
+
+      let calibrationAdvice = '50/50 Pillar Split Balanced';
+      if (totalDirectional < 12) {
+        calibrationAdvice = `Sample too small (n=${totalDirectional}, need 12+; US indices are correlated). No tuning advice. Seed rows excluded.`;
+      } else {
+        if (fundRate - sentRate >= 12) {
+          calibrationAdvice = `Fundamentals leading (+${(fundRate - sentRate).toFixed(0)}% edge) — weight macro higher`;
+        } else if (sentRate - fundRate >= 12) {
+          calibrationAdvice = `Sentiment/Structure leading (+${(sentRate - fundRate).toFixed(0)}% edge) — trust trend/COT`;
+        } else {
+          calibrationAdvice = '50/50 Fundamental & Sentiment balance performing evenly';
+        }
+      }
+
+      return {
+        totalSnapshots: state.historyLog.length,
+        totalDirectional,
+        overallHitRate,
+        highConvCount: highConv.length,
+        highConvRate,
+        fundRate,
+        sentRate,
+        calibrationAdvice
+      };
+    }
+
+    // =========================================================================
+    // 6. UI RENDERING ENGINE
+    // =========================================================================
+    function renderBannerAndRegime() {
+      const bannerBtn = document.getElementById('banner-regime-btn');
+      if (state.macroRegime === 'inflation') {
+        bannerBtn.textContent = 'HAWKISH INFLATION REGIME (GOOD = BAD)';
+        bannerBtn.className = 'px-2 py-0.5 rounded font-semibold text-[11px] bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:opacity-90 transition-opacity';
+      } else {
+        bannerBtn.textContent = 'GROWTH / LIQUIDITY REGIME (GOOD = GOOD)';
+        bannerBtn.className = 'px-2 py-0.5 rounded font-semibold text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:opacity-90 transition-opacity';
+      }
+
+      const noteInput = document.getElementById('macro-regime-note-input');
+      if (noteInput && document.activeElement !== noteInput) {
+        noteInput.value = state.regimeNote;
+      }
+
+      const pill = document.getElementById('history-count-pill');
+      if (pill) pill.textContent = state.historyLog.length;
+
+      // Update Beta Lock UI states
+      const headerLockIcon = document.getElementById('header-beta-lock-icon');
+      if (headerLockIcon) {
+        headerLockIcon.setAttribute('data-lucide', state.betaLocked ? 'lock' : 'unlock');
+      }
+      const lockBadge = document.getElementById('beta-lock-badge');
+      const lockBtn = document.getElementById('btn-toggle-beta-lock');
+      if (lockBadge && lockBtn) {
+        if (state.betaLocked) {
+          lockBadge.textContent = 'STRUCTURALLY LOCKED';
+          lockBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40';
+          lockBtn.innerHTML = `<i data-lucide="lock" class="w-3.5 h-3.5"></i><span>Unlock to Calibrate</span>`;
+          lockBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-mono transition-colors';
+        } else {
+          lockBadge.textContent = 'CALIBRATION UNLOCKED';
+          lockBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+          lockBtn.innerHTML = `<i data-lucide="unlock" class="w-3.5 h-3.5"></i><span>Lock Structural Betas</span>`;
+          lockBtn.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-mono transition-colors';
+        }
+      }
+    }
+
+    function renderMacroAndFearGreed() {
+      // Yields, VIX, DXY
+      document.getElementById('macro-us10y-val').textContent = `${state.macro.us10y.val.toFixed(2)}%`;
+      document.getElementById('macro-us2y-val').textContent = `/ ${state.macro.us2y.val.toFixed(2)}%`;
+      const bps = state.macro.us10y.chgBps;
+      const us10yChgEl = document.getElementById('macro-us10y-chg');
+      us10yChgEl.textContent = `${bps >= 0 ? '+' : ''}${bps.toFixed(1)} bps`;
+      us10yChgEl.className = `text-xs font-mono tabular-nums ${bps >= 0 ? 'text-rose-400' : 'text-emerald-400'}`;
+
+      document.getElementById('macro-vix-val').textContent = state.macro.vix.val.toFixed(2);
+      const vixChg = state.macro.vix.chgPct;
+      const vixChgEl = document.getElementById('macro-vix-chg');
+      vixChgEl.textContent = `${vixChg >= 0 ? '+' : ''}${vixChg.toFixed(1)}%`;
+      vixChgEl.className = `text-xs font-mono tabular-nums ${vixChg >= 0 ? 'text-rose-400' : 'text-emerald-400'}`;
+
+      const vixTag = document.getElementById('macro-vix-tag');
+      if (state.macro.vix.val >= 28) {
+        vixTag.textContent = 'PANIC VOL';
+        vixTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-400 border border-rose-500/30';
+      } else if (state.macro.vix.val >= 20) {
+        vixTag.textContent = 'ELEVATED';
+        vixTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-500/15 text-amber-400 border border-amber-500/30';
+      } else {
+        vixTag.textContent = 'CALM';
+        vixTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+      }
+
+      document.getElementById('macro-dxy-val').textContent = state.macro.dxy.val.toFixed(2);
+      const dxyChg = state.macro.dxy.chgPct;
+      const dxyChgEl = document.getElementById('macro-dxy-chg');
+      dxyChgEl.textContent = `${dxyChg >= 0 ? '+' : ''}${dxyChg.toFixed(2)}%`;
+      dxyChgEl.className = `text-xs font-mono tabular-nums ${dxyChg >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+
+      // CNN Fear & Greed
+      const fgSignals = computeFearGreedSignals();
+      document.getElementById('fg-numeric-val').textContent = fgSignals.fg;
+      document.getElementById('fg-slider').value = fgSignals.fg;
+      const fgBadge = document.getElementById('fg-zone-badge');
+      fgBadge.textContent = fgSignals.zone;
+      fgBadge.className = `px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${fgSignals.badgeClass}`;
+
+      const eqColor = fgSignals.equityScore > 0 ? 'text-emerald-400' : fgSignals.equityScore < 0 ? 'text-rose-400' : 'text-gray-300';
+      const gdColor = fgSignals.goldScore > 0 ? 'text-emerald-400' : fgSignals.goldScore < 0 ? 'text-rose-400' : 'text-gray-300';
+      document.getElementById('fg-impact-summary').innerHTML = `
+        ${state.fearGreedMode === 'contrarian' ? 'Contrarian' : 'Linear'} Equity Overlay: <strong class="${eqColor}">${formatSignedScore(fgSignals.equityScore)}</strong>
+        &nbsp;|&nbsp; Gold Safe-Haven: <strong class="${gdColor}">${formatSignedScore(fgSignals.goldScore)}</strong>
+      `;
+
+      const btnContrarian = document.getElementById('btn-fg-contrarian');
+      const btnLinear = document.getElementById('btn-fg-linear');
+      if (state.fearGreedMode === 'contrarian') {
+        btnContrarian.className = 'px-2 py-0.5 rounded bg-purple-500/25 text-purple-300 border border-purple-500/40';
+        btnLinear.className = 'px-2 py-0.5 rounded text-gray-400 hover:text-gray-200';
+      } else {
+        btnLinear.className = 'px-2 py-0.5 rounded bg-blue-500/25 text-blue-300 border border-blue-500/40';
+        btnContrarian.className = 'px-2 py-0.5 rounded text-gray-400 hover:text-gray-200';
+      }
+    }
+
+    function renderSurpriseEngine() {
+      const btnInf = document.getElementById('btn-regime-inflation');
+      const btnGro = document.getElementById('btn-regime-growth');
+      if (state.macroRegime === 'inflation') {
+        btnInf.className = 'px-2.5 py-1 rounded-md font-medium transition-colors bg-rose-500/20 text-rose-300 border border-rose-500/40';
+        btnGro.className = 'px-2.5 py-1 rounded-md font-medium transition-colors text-gray-400 hover:text-gray-200 border border-transparent';
+      } else {
+        btnGro.className = 'px-2.5 py-1 rounded-md font-medium transition-colors bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        btnInf.className = 'px-2.5 py-1 rounded-md font-medium transition-colors text-gray-400 hover:text-gray-200 border border-transparent';
+      }
+
+      const surprises = computeIndicatorSurprises();
+      const grid = document.getElementById('surprise-inputs-grid');
+      grid.innerHTML = '';
+
+      surprises.forEach(item => {
+        const diff = item.rawDiff;
+        const diffSign = diff > 0 ? '+' : '';
+        const diffFormatted = `${diffSign}${diff.toFixed(item.unit === 'pts' ? 1 : 2)}${item.unit === 'pts' ? '' : item.unit}`;
+        const zColor = item.zScore > 0 ? 'text-blue-300 bg-blue-500/15 border-blue-500/30' : item.zScore < 0 ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' : 'text-gray-400 bg-gray-800 border-gray-700';
+
+        const card = document.createElement('div');
+        card.className = 'bg-[#0b0f19] border border-gray-800 rounded-xl p-3 flex flex-col justify-between gap-2';
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-1">
+            <div>
+              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}</div>
+              <div class="text-[10px] font-mono text-gray-500 mt-0.5">${item.releaseDate} • ${item.note}</div>
+            </div>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${zColor} shrink-0">Z: ${formatSignedScore(item.zScore)}</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-1.5 text-[11px] font-mono mt-1">
+            <label class="bg-gray-900 border border-gray-800 rounded px-2 py-1 flex flex-col">
+              <span class="text-[9px] text-gray-500 uppercase">Actual (${item.unit})</span>
+              <input type="number" step="0.05" value="${item.actual}" onchange="updateEconomicInput('${item.id}', 'actual', this.value)" class="bg-transparent text-white font-bold focus:outline-none focus:text-emerald-300 w-full mt-0.5" />
+            </label>
+            <label class="bg-gray-900 border border-gray-800 rounded px-2 py-1 flex flex-col">
+              <span class="text-[9px] text-gray-500 uppercase">Expected</span>
+              <input type="number" step="0.05" value="${item.expected}" onchange="updateEconomicInput('${item.id}', 'expected', this.value)" class="bg-transparent text-gray-300 font-semibold focus:outline-none focus:text-blue-300 w-full mt-0.5" />
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between text-[10px] font-mono text-gray-400 pt-0.5 border-t border-gray-800/60">
+            <span>Surprise: <strong class="text-gray-200">${diffFormatted}</strong></span>
+            <span>${item.isRateOrInflation ? 'Rate/CPI Shock' : (state.macroRegime === 'inflation' ? 'Hawkish Feed' : 'Growth Feed')}</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderAssetCards() {
+      const container = document.getElementById('asset-cards-grid');
+      container.innerHTML = '';
+
+      Object.values(state.assets).forEach(asset => {
+        const { fundScore, sentScore, compositeScore, cautionTag } = getAssetScores(asset);
+        const bias = getBiasMeta(compositeScore);
+        const isSelected = asset.id === state.selectedAssetId;
+        const pctFromLeft = ((compositeScore + 5) / 10) * 100;
+
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.onclick = () => selectAsset(asset.id);
+        card.className = `text-left rounded-2xl p-3.5 transition-all border flex flex-col justify-between ${
+          isSelected
+            ? 'bg-[#162238] border-emerald-500/70 ring-1 ring-emerald-500/40 shadow-lg shadow-emerald-950/30'
+            : 'bg-terminal-card border-terminal-border hover:border-gray-700 hover:bg-[#162033]'
+        }`;
+
+        const chgSign = asset.changePct >= 0 ? '+' : '';
+        const chgColor = asset.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400';
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between gap-1">
+              <span class="font-mono text-[11px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-900 text-gray-200 border border-gray-800">${asset.id}</span>
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border ${bias.badgeClass}">${bias.shortLabel}</span>
+            </div>
+            <div class="mt-2 font-semibold text-white text-xs truncate">${asset.shortName}</div>
+            <div class="mt-1 flex items-baseline justify-between font-mono tabular-nums">
+              <span class="text-sm font-bold text-gray-100">${formatPrice(asset)}</span>
+              <span class="text-[11px] ${chgColor}">${chgSign}${asset.changePct.toFixed(2)}%</span>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2.5 border-t border-gray-800/80 space-y-1.5">
+            <div class="flex items-center justify-between text-[11px] font-mono">
+              <span class="text-gray-400">BIAS</span>
+              <span class="text-sm font-bold tabular-nums ${bias.textClass}">${formatSignedScore(compositeScore)}</span>
+            </div>
+            <div class="relative w-full h-1.5 rounded-full bg-gray-900 overflow-hidden border border-gray-800">
+              <div class="absolute inset-y-0 left-1/2 w-px bg-gray-600 z-10"></div>
+              <div class="h-full transition-all duration-300 rounded-full" style="width: ${pctFromLeft}%; background-color: ${bias.barColor};"></div>
+            </div>
+            <div class="flex items-center justify-between text-[10px] font-mono text-gray-500">
+              <span>F:${formatSignedScore(fundScore)}</span>
+              <span>S:${formatSignedScore(sentScore)}</span>
+            </div>
+            <div class="text-[10px] font-mono text-purple-300/90 truncate pt-0.5" title="Next Catalyst: ${asset.nextCatalyst}">
+              ⏱ ${asset.nextCatalyst}
+            </div>
+            ${cautionTag ? `<div class="mt-1 text-center px-1.5 py-0.5 rounded border text-[9px] font-mono font-bold ${cautionTag.badgeClass}">${cautionTag.shortLabel}</div>` : ''}
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function renderScorecardTable() {
+      const tbody = document.getElementById('scorecard-table-body');
+      tbody.innerHTML = '';
+
+      Object.values(state.assets).forEach(asset => {
+        const { fundScore, sentScore, compositeScore, cautionTag } = getAssetScores(asset);
+        const bias = getBiasMeta(compositeScore);
+        const isSelected = asset.id === state.selectedAssetId;
+
+        const tr = document.createElement('tr');
+        tr.onclick = () => selectAsset(asset.id);
+        tr.className = `cursor-pointer transition-colors ${
+          isSelected ? 'bg-emerald-500/10' : 'hover:bg-gray-800/40'
+        }`;
+
+        const fundColor = fundScore > 0 ? 'text-emerald-400' : fundScore < 0 ? 'text-rose-400' : 'text-gray-300';
+        const sentColor = sentScore > 0 ? 'text-emerald-400' : sentScore < 0 ? 'text-rose-400' : 'text-gray-300';
+        const cotChgSign = asset.cot.weeklyChangePct >= 0 ? '+' : '';
+        const cotColor = asset.cot.weeklyChangePct >= 0 ? 'text-emerald-400' : 'text-rose-400';
+
+        tr.innerHTML = `
+          <td class="py-3 px-4">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-7 rounded-full ${isSelected ? 'bg-emerald-400' : 'bg-transparent'}"></span>
+              <div>
+                <div class="font-semibold text-white text-xs sm:text-sm">${asset.shortName} <span class="font-mono text-[10px] text-gray-500">${asset.id}</span></div>
+                <div class="text-[11px] font-mono text-gray-400">${formatPrice(asset)}</div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3 px-2.5 text-center font-mono font-semibold text-xs tabular-nums ${fundColor}">
+            ${formatSignedScore(fundScore)}
+          </td>
+          <td class="py-3 px-2.5 text-center font-mono font-semibold text-xs tabular-nums ${sentColor}">
+            ${formatSignedScore(sentScore)}
+          </td>
+          <td class="py-3 px-3 text-center">
+            <span class="font-mono font-bold text-sm tabular-nums ${bias.textClass}">${formatSignedScore(compositeScore)}</span>
+          </td>
+          <td class="py-3 px-3">
+            <div class="flex flex-col items-start gap-1">
+              <span class="inline-block px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${bias.badgeClass}">
+                ${bias.label}
+              </span>
+              ${cautionTag ? `<span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${cautionTag.badgeClass}">${cautionTag.label}</span>` : ''}
+            </div>
+          </td>
+          <td class="py-3 px-4 hidden md:table-cell text-[11px] font-mono">
+            <div class="text-gray-300">COT Long: <strong>${asset.cot.longPct.toFixed(1)}%</strong> (<span class="${cotColor}">${cotChgSign}${asset.cot.weeklyChangePct.toFixed(1)}%</span>)</div>
+            <div class="text-[10px] text-purple-300 truncate max-w-[210px]" title="${asset.nextCatalyst}">⏱ ${asset.nextCatalyst}</div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderInspector() {
+      const asset = state.assets[state.selectedAssetId];
+      if (!asset) return;
+
+      const { fundScore, sentScore, compositeScore, cautionTag } = getAssetScores(asset);
+      const bias = getBiasMeta(compositeScore);
+
+      document.getElementById('inspector-ticker').textContent = asset.id;
+      document.getElementById('inspector-name').textContent = asset.name;
+      document.getElementById('inspector-price').textContent = `${formatPrice(asset)} (${asset.changePct >= 0 ? '+' : ''}${asset.changePct.toFixed(2)}%)`;
+
+      const catInput = document.getElementById('inspector-catalyst-input');
+      if (catInput && document.activeElement !== catInput) {
+        catInput.value = asset.nextCatalyst;
+      }
+
+      document.getElementById('inspector-divergence-note').innerHTML = `<strong>Why ${asset.id} Scores Here:</strong> ${asset.divergenceNote}`;
+
+      const cautionBadge = document.getElementById('inspector-caution-badge');
+      if (cautionTag) {
+        cautionBadge.textContent = cautionTag.label;
+        cautionBadge.className = `px-2 py-0.5 rounded border font-mono text-[10px] font-bold ${cautionTag.badgeClass}`;
+        cautionBadge.classList.remove('hidden');
+      } else {
+        cautionBadge.classList.add('hidden');
+      }
+
+      const dist50 = ((asset.price - asset.sma50) / asset.sma50) * 100;
+      const dist200 = ((asset.price - asset.sma200) / asset.sma200) * 100;
+      const smaEl = document.getElementById('inspector-sma-status');
+      smaEl.textContent = `${dist50 >= 0 ? '+' : ''}${dist50.toFixed(1)}% vs 50d SMA | ${dist200 >= 0 ? '+' : ''}${dist200.toFixed(1)}% vs 200d SMA`;
+      smaEl.className = dist50 >= 0 ? 'text-emerald-400' : 'text-rose-400';
+
+      const compEl = document.getElementById('inspector-composite-score');
+      compEl.textContent = formatSignedScore(compositeScore);
+      compEl.className = `text-2xl font-bold font-mono tabular-nums ${bias.textClass}`;
+
+      const labelEl = document.getElementById('inspector-bias-label');
+      labelEl.textContent = bias.label;
+      labelEl.className = `text-[11px] font-mono uppercase tracking-wider ${bias.textClass}`;
+
+      const fundTotalEl = document.getElementById('inspector-fund-total');
+      fundTotalEl.textContent = `${formatSignedScore(fundScore)} / 5.0`;
+      fundTotalEl.className = `text-sm font-mono font-bold tabular-nums ${fundScore > 0 ? 'text-emerald-400' : fundScore < 0 ? 'text-rose-400' : 'text-gray-300'}`;
+
+      const sentTotalEl = document.getElementById('inspector-sent-total');
+      sentTotalEl.textContent = `${formatSignedScore(sentScore)} / 5.0`;
+      sentTotalEl.className = `text-sm font-mono font-bold tabular-nums ${sentScore > 0 ? 'text-emerald-400' : sentScore < 0 ? 'text-rose-400' : 'text-gray-300'}`;
+
+      // COT Widget Sync
+      const longPct = clamp(asset.cot.longPct, 0, 100);
+      const shortPct = 100 - longPct;
+      const wkChg = asset.cot.weeklyChangePct;
+      document.getElementById('cot-long-pct').textContent = `${longPct.toFixed(1)}%`;
+      document.getElementById('cot-short-pct').textContent = `${shortPct.toFixed(1)}%`;
+      const cotChgEl = document.getElementById('cot-change-pct');
+      cotChgEl.textContent = `${wkChg >= 0 ? '+' : ''}${wkChg.toFixed(2)}%`;
+      cotChgEl.className = wkChg >= 0 ? 'text-emerald-400' : 'text-rose-400';
+      document.getElementById('cot-long-bar').style.width = `${longPct}%`;
+      document.getElementById('input-cot-long').value = longPct.toFixed(1);
+      document.getElementById('input-cot-change').value = wkChg.toFixed(2);
+
+      const cotTag = document.getElementById('cot-signal-tag');
+      if (wkChg >= 1.5) {
+        cotTag.textContent = 'INSTITUTIONAL ACCUMULATION';
+        cotTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+      } else if (wkChg <= -1.5) {
+        cotTag.textContent = 'LONG TRIMMING / UNWIND';
+        cotTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/15 text-rose-300 border border-rose-500/30';
+      } else {
+        cotTag.textContent = 'NEUTRAL FLOW';
+        cotTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-800 text-gray-300 border border-gray-700';
+      }
+
+      // Render Sliders
+      renderSliderGroup('fundamental-sliders-container', FUNDAMENTAL_FACTORS, 'fundamental', asset.fundamental);
+      renderSliderGroup('sentiment-sliders-container', SENTIMENT_FACTORS, 'sentiment', asset.sentiment);
+    }
+
+    function renderSliderGroup(containerId, factorDefs, pillarName, valuesObj) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+
+      factorDefs.forEach(f => {
+        const val = valuesObj[f.key] ?? 0;
+        const valColor = val > 0 ? 'text-emerald-400' : val < 0 ? 'text-rose-400' : 'text-gray-400';
+
+        const row = document.createElement('div');
+        row.className = `space-y-1 ${f.autoLocked ? 'pb-2 border-b border-gray-800/90' : ''}`;
+        row.innerHTML = `
+          <div class="flex items-center justify-between text-xs gap-2">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="font-medium text-gray-200 truncate">${f.label}</span>
+              ${f.autoLocked ? `<span class="px-1.5 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 text-[9px] font-mono text-blue-300 shrink-0">${f.sourceTag}</span>` : ''}
+            </div>
+            <span class="font-mono font-bold tabular-nums ${valColor} shrink-0">${formatSignedScore(val)}</span>
+          </div>
+          <input
+            type="range"
+            min="-1"
+            max="1"
+            step="0.1"
+            value="${val}"
+            ${f.autoLocked ? 'disabled' : ''}
+            aria-label="${f.label}"
+            oninput="handleSliderChange('${pillarName}', '${f.key}', this.value)"
+            class="score-slider ${f.autoLocked ? 'opacity-65 cursor-not-allowed' : ''}"
+          />
+          <div class="text-[10px] text-gray-500 leading-tight">${f.hint}</div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function renderBetaMatrixTable() {
+      const tbody = document.getElementById('beta-matrix-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      Object.values(state.assets).forEach(asset => {
+        const b = state.betaWeights[asset.id];
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-800/40';
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 font-sans font-semibold text-white">
+            ${asset.shortName} <span class="font-mono text-[10px] text-gray-400">(${asset.id})</span>
+          </td>
+          ${['rates', 'cpi', 'labor', 'growth', 'usd'].map(factor => `
+            <td class="py-2 px-3 text-center">
+              <input
+                type="number"
+                step="0.1"
+                min="-2.5"
+                max="2.5"
+                value="${b[factor].toFixed(1)}"
+                ${state.betaLocked ? 'disabled' : ''}
+                onchange="updateBetaWeight('${asset.id}', '${factor}', this.value)"
+                class="w-16 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-center font-mono text-xs ${state.betaLocked ? 'opacity-65 cursor-not-allowed' : ''} ${b[factor] < 0 ? 'text-amber-300' : b[factor] >= 1.4 ? 'text-purple-300 font-bold' : 'text-gray-200'} focus:outline-none focus:border-emerald-400"
+              />
+            </td>
+          `).join('')}
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // =========================================================================
+    // 7. RENDER HISTORY & PERFORMANCE CALIBRATION VIEW
+    // =========================================================================
+    function renderHistoryDashboard() {
+      const stats = computeCalibrationStats();
+
+      // 1. Render KPI Strip
+      const kpiGrid = document.getElementById('history-kpis-grid');
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div class="bg-terminal-card border border-terminal-border rounded-xl p-3.5">
+            <div class="text-[11px] font-mono text-gray-400 uppercase">Directional Hit Rate</div>
+            <div class="mt-1.5 flex items-baseline justify-between">
+              <span class="text-2xl font-bold font-mono ${stats.overallHitRate >= 60 ? 'text-emerald-400' : 'text-amber-300'}">${stats.overallHitRate.toFixed(1)}%</span>
+              <span class="text-xs font-mono text-gray-400">${stats.totalDirectional} directional calls</span>
+            </div>
+            <div class="mt-1 text-[11px] text-gray-500 font-mono">Scores &ge; +0.8 or &le; -0.8</div>
+          </div>
+
+          <div class="bg-terminal-card border border-terminal-border rounded-xl p-3.5">
+            <div class="text-[11px] font-mono text-gray-400 uppercase">High-Conviction Hit Rate</div>
+            <div class="mt-1.5 flex items-baseline justify-between">
+              <span class="text-2xl font-bold font-mono text-emerald-400">${stats.highConvRate.toFixed(1)}%</span>
+              <span class="text-xs font-mono text-gray-400">${stats.highConvCount} high-conv logs</span>
+            </div>
+            <div class="mt-1 text-[11px] text-gray-500 font-mono">Mod/Strong Bias (&ge; &plusmn;1.5)</div>
+          </div>
+
+          <div class="bg-terminal-card border border-terminal-border rounded-xl p-3.5">
+            <div class="text-[11px] font-mono text-gray-400 uppercase">Pillar Attribution Edge</div>
+            <div class="mt-1.5 flex items-baseline justify-between font-mono">
+              <span class="text-sm font-bold text-blue-300">Fund: ${stats.fundRate.toFixed(0)}%</span>
+              <span class="text-sm font-bold text-purple-300">Sent: ${stats.sentRate.toFixed(0)}%</span>
+            </div>
+            <div class="mt-1.5 text-[11px] text-gray-400 leading-tight">${stats.calibrationAdvice}</div>
+          </div>
+
+          <div class="bg-terminal-card border border-terminal-border rounded-xl p-3.5">
+            <div class="text-[11px] font-mono text-gray-400 uppercase">Total Logged Snapshots</div>
+            <div class="mt-1.5 flex items-baseline justify-between">
+              <span class="text-2xl font-bold font-mono text-white">${stats.totalSnapshots}</span>
+              <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono">AUTO + MANUAL</span>
+            </div>
+            <div class="mt-1 text-[11px] text-gray-500 font-mono">Stored persistently in browser</div>
+          </div>
+        `;
+      }
+
+      // 2. Render Chart Asset Pills & Interactive SVG Line Chart
+      const pillsContainer = document.getElementById('history-asset-filter-pills');
+      if (pillsContainer) {
+        pillsContainer.innerHTML = Object.values(state.assets).map(a => {
+          const active = a.id === state.historyChartAsset;
+          return `<button onclick="setHistoryChartAsset('${a.id}')" class="px-2.5 py-1 rounded-lg text-xs font-mono transition-colors ${
+            active
+              ? 'bg-blue-500/25 text-blue-200 border border-blue-500/50 font-bold'
+              : 'bg-gray-900 text-gray-400 border border-gray-800 hover:text-gray-200'
+          }">${a.id}</button>`;
+        }).join('');
+      }
+      document.getElementById('chart-asset-badge').textContent = state.historyChartAsset;
+      renderHistorySVGChart(state.historyChartAsset);
+
+      // 3. Render Historical Table
+      const tbody = document.getElementById('history-table-body');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      const filtered = state.historyLog
+        .filter(item => state.historyFilterAsset === 'ALL' || item.assetId === state.historyFilterAsset)
+        .slice()
+        .reverse();
+
+      filtered.forEach(entry => {
+        const bias = getBiasMeta(entry.compositeScore);
+        const ev = evaluateHistoryRow(entry);
+        const asset = state.assets[entry.assetId];
+        const livePriceHint = asset ? asset.price : entry.entryPrice;
+
+        let retHtml = '<span class="text-gray-500">—</span>';
+        if (ev.retPct !== null) {
+          const rSign = ev.retPct >= 0 ? '+' : '';
+          const rColor = ev.retPct > 0 ? 'text-emerald-400' : ev.retPct < 0 ? 'text-rose-400' : 'text-gray-300';
+          retHtml = `<span class="${rColor} font-bold">${rSign}${ev.retPct.toFixed(2)}%</span>`;
+        }
+
+        let accBadge = '<span class="px-2 py-0.5 rounded bg-gray-800 text-gray-400 text-[10px]">OPEN</span>';
+        if (ev.status === 'HIT' || ev.status === 'RANGE HIT') {
+          accBadge = `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">✓ ${ev.status}</span>`;
+        } else if (ev.status === 'MISS' || ev.status === 'BREAKOUT') {
+          accBadge = `<span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold">✕ ${ev.status}</span>`;
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-800/40';
+        tr.innerHTML = `
+          <td class="py-2.5 px-4 text-gray-300 whitespace-nowrap">${entry.timestamp}</td>
+          <td class="py-2.5 px-3 font-bold text-white">${entry.assetId}</td>
+          <td class="py-2.5 px-2.5 text-center text-gray-400">${formatSignedScore(entry.fundScore)} / ${formatSignedScore(entry.sentScore)}</td>
+          <td class="py-2.5 px-2.5 text-center font-bold ${bias.textClass}">${formatSignedScore(entry.compositeScore)}</td>
+          <td class="py-2.5 px-3">
+            <span class="px-2 py-0.5 rounded text-[10px] border ${bias.badgeClass}">${bias.shortLabel}</span>
+          </td>
+          <td class="py-2.5 px-3 text-right text-gray-200">${Number(entry.entryPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          <td class="py-2.5 px-3 text-right">
+            <input
+              type="number"
+              step="0.01"
+              placeholder="${livePriceHint.toFixed(2)}"
+              value="${entry.followUpPrice ? entry.followUpPrice : ''}"
+              onchange="updateHistoryFollowUp('${entry.id}', this.value)"
+              title="Enter +5d / +10d follow-up price (blank uses live spot)"
+              class="w-24 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-right text-xs text-white focus:outline-none focus:border-emerald-400"
+            />
+          </td>
+          <td class="py-2.5 px-3 text-right">${retHtml}</td>
+          <td class="py-2.5 px-3 text-center">${accBadge}</td>
+          <td class="py-2.5 px-3 text-center">
+            <button onclick="deleteHistoryRow('${entry.id}')" class="p-1 text-gray-500 hover:text-rose-400 transition-colors" title="Delete snapshot">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderHistorySVGChart(assetId) {
+      const container = document.getElementById('history-svg-container');
+      if (!container) return;
+
+      const series = state.historyLog.filter(item => item.assetId === assetId);
+      if (series.length < 2) {
+        container.innerHTML = `<div class="py-10 text-center text-xs font-mono text-gray-400">Log at least 2 snapshots for ${assetId} to render trajectory chart.</div>`;
+        return;
+      }
+
+      const width = 920;
+      const height = 240;
+      const padL = 46;
+      const padR = 58;
+      const padT = 22;
+      const padB = 34;
+      const plotW = width - padL - padR;
+      const plotH = height - padT - padB;
+
+      const prices = series.map(s => s.entryPrice);
+      const minP = Math.min(...prices) * 0.992;
+      const maxP = Math.max(...prices) * 1.008;
+      const pSpan = maxP - minP || 1;
+
+      const xForIdx = idx => padL + (idx / (series.length - 1)) * plotW;
+      const yForScore = sc => padT + ((5 - clamp(sc, -5, 5)) / 10) * plotH;
+      const yForPrice = pr => padT + ((maxP - pr) / pSpan) * plotH;
+
+      const zeroY = yForScore(0);
+      const bullZoneY = yForScore(1.5);
+      const bearZoneY = yForScore(-1.5);
+
+      const scorePoints = series.map((s, i) => `${xForIdx(i).toFixed(1)},${yForScore(s.compositeScore).toFixed(1)}`).join(' ');
+      const pricePoints = series.map((s, i) => `${xForIdx(i).toFixed(1)},${yForPrice(s.entryPrice).toFixed(1)}`).join(' ');
+
+      const circlesHtml = series.map((s, i) => {
+        const cx = xForIdx(i).toFixed(1);
+        const cy = yForScore(s.compositeScore).toFixed(1);
+        const fill = s.compositeScore >= 1.5 ? '#10b981' : s.compositeScore <= -1.5 ? '#f43f5e' : '#94a3b8';
+        const label = s.timestamp.slice(5, 10);
+        return `
+          <g>
+            <circle cx="${cx}" cy="${cy}" r="5" fill="${fill}" stroke="#090d16" stroke-width="2">
+              <title>${s.timestamp} | Score: ${formatSignedScore(s.compositeScore)} | Price: ${s.entryPrice}</title>
+            </circle>
+            <text x="${cx}" y="${cy - 10}" text-anchor="middle" fill="${fill}" font-size="10" font-family="JetBrains Mono" font-weight="bold">${formatSignedScore(s.compositeScore)}</text>
+            <text x="${cx}" y="${height - 10}" text-anchor="middle" fill="#64748b" font-size="10" font-family="JetBrains Mono">${label}</text>
+          </g>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" class="w-full h-auto overflow-visible">
+          <!-- Bullish / Bearish Shading Bands -->
+          <rect x="${padL}" y="${padT}" width="${plotW}" height="${bullZoneY - padT}" fill="#10b981" fill-opacity="0.06" />
+          <rect x="${padL}" y="${bearZoneY}" width="${plotW}" height="${padT + plotH - bearZoneY}" fill="#f43f5e" fill-opacity="0.06" />
+
+          <!-- Horizontal Reference Lines -->
+          <line x1="${padL}" y1="${padT}" x2="${padL + plotW}" y2="${padT}" stroke="#1e293b" stroke-dasharray="3,3" />
+          <line x1="${padL}" y1="${zeroY}" x2="${padL + plotW}" y2="${zeroY}" stroke="#475569" stroke-width="1.2" />
+          <line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" stroke="#1e293b" stroke-dasharray="3,3" />
+
+          <!-- Left Y-Axis Labels (Composite Score -5 to +5) -->
+          <text x="${padL - 8}" y="${padT + 4}" text-anchor="end" fill="#10b981" font-size="10" font-family="JetBrains Mono">+5.0</text>
+          <text x="${padL - 8}" y="${zeroY + 4}" text-anchor="end" fill="#94a3b8" font-size="10" font-family="JetBrains Mono">0.0</text>
+          <text x="${padL - 8}" y="${padT + plotH + 4}" text-anchor="end" fill="#f43f5e" font-size="10" font-family="JetBrains Mono">-5.0</text>
+
+          <!-- Right Y-Axis Labels (Spot Price) -->
+          <text x="${padL + plotW + 8}" y="${padT + 4}" text-anchor="start" fill="#cbd5e1" font-size="10" font-family="JetBrains Mono">${maxP.toFixed(0)}</text>
+          <text x="${padL + plotW + 8}" y="${padT + plotH + 4}" text-anchor="start" fill="#cbd5e1" font-size="10" font-family="JetBrains Mono">${minP.toFixed(0)}</text>
+
+          <!-- Spot Price Dashed Line -->
+          <polyline fill="none" stroke="#e2e8f0" stroke-opacity="0.55" stroke-width="1.8" stroke-dasharray="5,4" points="${pricePoints}" />
+
+          <!-- Composite Bias Solid Line -->
+          <polyline fill="none" stroke="#38bdf8" stroke-width="2.6" points="${scorePoints}" />
+
+          <!-- Data Nodes -->
+          ${circlesHtml}
+        </svg>
+      `;
+    }
+
+    function updateModeButtonsUI() {
+      const btnQuant = document.getElementById('btn-mode-quant');
+      const btnManual = document.getElementById('btn-mode-manual');
+
+      if (state.scoringMode === 'quant') {
+        btnQuant.className = 'px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        btnManual.className = 'px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 border border-transparent';
+      } else {
+        btnManual.className = 'px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        btnQuant.className = 'px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors text-gray-400 hover:text-gray-200 border border-transparent';
+      }
+    }
+
+    function stanceOf(score, tag) {
+      if (tag && tag.type === 'conflict') return { t: 'STAND ASIDE', c: 'text-sky-300 border-sky-500/40 bg-sky-500/15' };
+      if (score >= 1.0) return { t: 'LONG BIAS', c: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/15' };
+      if (score <= -1.0) return { t: 'SHORT BIAS', c: 'text-rose-300 border-rose-500/40 bg-rose-500/15' };
+      return { t: 'NO EDGE', c: 'text-gray-300 border-gray-700 bg-gray-800' };
+    }
+
+    function topDrivers(asset) {
+      const labels = [...FUNDAMENTAL_FACTORS, ...SENTIMENT_FACTORS];
+      const all = [
+        ...Object.entries(asset.fundamental).map(([k, v]) => [k, v]),
+        ...Object.entries(asset.sentiment).map(([k, v]) => [k, v])
+      ].map(([k, v]) => ({ v, label: (labels.find(f => f.key === k)?.label || k).replace(/^\d+\.\s*(Auto )?/, '').split(/[\/&(]/)[0].trim() }));
+      return all.sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 2);
+    }
+
+    function renderBiasBoard() {
+      const el = document.getElementById('bias-board');
+      if (!el) return;
+      const rows = Object.values(state.assets).map(a => ({ a, s: getAssetScores(a) })).sort((x, y) => Math.abs(y.s.compositeScore) - Math.abs(x.s.compositeScore));
+      el.innerHTML = `<div class="flex items-center justify-between mb-3"><h3 class="text-sm font-bold text-white">Bias Board <span class="text-[10px] font-mono text-gray-400">ranked by conviction | gates your 1H entries</span></h3><span class="text-[10px] font-mono text-gray-500">F&G weight 0.5x | surprises decay 21d | seasonality by month</span></div>` +
+        `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">` + rows.map(({ a, s }) => {
+          const st = stanceOf(s.compositeScore, s.cautionTag);
+          const d = topDrivers(a).map(x => `${x.label} ${formatSignedScore(x.v)}`).join(' | ');
+          const f = ((s.fundScore + 5) / 10) * 100, se = ((s.sentScore + 5) / 10) * 100;
+          return `<button onclick="selectAsset('${a.id}')" class="text-left p-3 rounded-xl border border-gray-800 bg-[#0b0f19] hover:border-gray-600 transition-colors">
+            <div class="flex items-center justify-between"><span class="font-mono text-xs font-bold text-white">${a.shortName}</span><span class="px-1.5 py-0.5 rounded border text-[9px] font-mono font-bold ${st.c}">${st.t}</span></div>
+            <div class="mt-1 font-mono text-lg font-bold tabular-nums ${getBiasMeta(s.compositeScore).textClass}">${formatSignedScore(s.compositeScore)}</div>
+            <div class="mt-1 space-y-1"><div class="h-1 rounded bg-gray-800"><div class="h-1 rounded bg-blue-400" style="width:${f}%"></div></div><div class="h-1 rounded bg-gray-800"><div class="h-1 rounded bg-purple-400" style="width:${se}%"></div></div></div>
+            <div class="mt-1 text-[10px] text-gray-500">F ${formatSignedScore(s.fundScore)} / S ${formatSignedScore(s.sentScore)}</div>
+            <div class="mt-1 text-[10px] text-gray-400 leading-snug">${d}</div>
+            ${s.cautionTag ? `<div class="mt-1 text-[9px] font-mono ${s.cautionTag.type === 'conflict' ? 'text-sky-300' : 'text-amber-300'}">${s.cautionTag.shortLabel}</div>` : ''}
+          </button>`;
+        }).join('') + `</div>`;
+    }
+
+    // ===== AUTO DATA: data.json / data.js written daily by fetch_data.py =====
+    const DATA_URL = './data.json'; // GitHub Pages: 'https://USER.github.io/REPO/data.json'
+    function todayKey() { return new Date().toISOString().slice(0, 10); }
+    async function loadAutoData() {
+      let d = window.AUTO_DATA || null;
+      try { const r = await fetch(DATA_URL + '?t=' + Date.now()); if (r.ok) d = await r.json(); } catch (_) {}
+      const pill = document.getElementById('auto-data-pill');
+      if (!d) { if (pill) pill.textContent = 'AUTO-DATA: none (manual mode)'; return; }
+      const T = todayKey(), need = [];
+      const m = d.macro || {};
+      ['us10y', 'vix', 'dxy'].forEach(k => { if (m[k]) Object.assign(state.macro[k], { val: m[k].val, mu: m[k].mu, sd: m[k].sd }); });
+      if (m.us2y) state.macro.us2y.val = m.us2y.val;
+      if (m.real10y) state.macro.real10y = m.real10y;
+      if (m.be10) state.macro.be10 = m.be10;
+      Object.entries(d.prices || {}).forEach(([id, p]) => { const a = state.assets[id]; if (a && p) Object.assign(a, { price: p.price, prevClose: p.prevClose, changePct: p.changePct, sma50: p.sma50, sma200: p.sma200, source: 'data.json' }); });
+      Object.entries(d.cot || {}).forEach(([id, c]) => { const a = state.assets[id]; if (a && c && a.cot.manualDate !== T) { a.cot.longPct = c.longPct; a.cot.weeklyChangePct = c.weeklyChangePct; } });
+      Object.entries(d.indicators || {}).forEach(([id, v]) => {
+        const i = state.indicators.find(x => x.id === id); if (!i) return;
+        if (i.manualDate !== T) { if (v.actual != null) i.actual = v.actual; if (v.expected != null) i.expected = v.expected; if (v.releaseDate) i.releaseDate = v.releaseDate; }
+        if (v.needsConsensus) need.push(i.name);
+      });
+      if (d.fearGreed && state.fgManualDate !== T) state.fearGreedIndex = clamp(Math.round(d.fearGreed.value), 0, 100);
+      state.autoUpdated = d.updated ? new Date(d.updated).getTime() : null;
+      const age = state.autoUpdated ? (Date.now() - state.autoUpdated) / 3600000 : null;
+      const failed = Object.entries(d.status || {}).filter(([, v]) => v !== 'ok').map(([k]) => k);
+      if (pill) {
+        const fresh = age !== null && age < 36 && !failed.length && !need.length;
+        pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${d.fearGreed && d.fearGreed.source !== 'cnn' ? ' | F&G=proxy' : ''}`;
+        pill.className = `ml-2 px-1.5 py-0.5 rounded border text-[10px] font-mono ${fresh ? 'border-emerald-500/40 text-emerald-300' : 'border-amber-500/40 text-amber-300'}`;
+      }
+      saveState();
+    }
+
+    function renderAll() {
+      renderBiasBoard();
+      updateModeButtonsUI();
+      renderBannerAndRegime();
+      renderMacroAndFearGreed();
+      renderSurpriseEngine();
+      renderAssetCards();
+      renderScorecardTable();
+      renderInspector();
+      renderBetaMatrixTable();
+      renderHistoryDashboard();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // =========================================================================
+    // 8. USER INTERACTIONS, MODALS & EXPORT/IMPORT
+    // =========================================================================
+    function switchWorkspaceTab(tabName) {
+      state.activeTab = tabName;
+      const termView = document.getElementById('workspace-terminal');
+      const histView = document.getElementById('workspace-history');
+      const btnTerm = document.getElementById('tab-btn-terminal');
+      const btnHist = document.getElementById('tab-btn-history');
+
+      if (tabName === 'terminal') {
+        termView.classList.remove('hidden');
+        histView.classList.add('hidden');
+        btnTerm.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        btnHist.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-400 hover:text-gray-200 border border-transparent';
+      } else {
+        termView.classList.add('hidden');
+        histView.classList.remove('hidden');
+        btnHist.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        btnTerm.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all text-gray-400 hover:text-gray-200 border border-transparent';
+        renderHistoryDashboard();
+      }
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function toggleMacroRegimeQuick() {
+      setMacroRegime(state.macroRegime === 'inflation' ? 'growth' : 'inflation');
+    }
+
+    function updateRegimeNote(text) {
+      state.regimeNote = text;
+      saveState();
+    }
+
+    function updateAssetCatalyst(text) {
+      const asset = state.assets[state.selectedAssetId];
+      if (!asset) return;
+      asset.nextCatalyst = text.trim() || 'Upcoming Macro Release';
+      saveState();
+      renderAssetCards();
+      renderScorecardTable();
+    }
+
+    function toggleBetaLock() {
+      state.betaLocked = !state.betaLocked;
+      saveState();
+      renderAll();
+      showToast(
+        state.betaLocked
+          ? 'Beta Matrix locked to prevent daily curve-fitting.'
+          : 'Beta Matrix unlocked for structural calibration.',
+        state.betaLocked ? 'amber' : 'emerald'
+      );
+    }
+
+    function setHistoryFilterAsset(assetId) {
+      state.historyFilterAsset = assetId;
+      if (assetId !== 'ALL') state.historyChartAsset = assetId;
+      renderHistoryDashboard();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function setHistoryChartAsset(assetId) {
+      state.historyChartAsset = assetId;
+      renderHistoryDashboard();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function updateHistoryFollowUp(rowId, rawVal) {
+      const target = state.historyLog.find(r => r.id === rowId);
+      if (!target) return;
+      const num = parseFloat(rawVal);
+      target.followUpPrice = (!isNaN(num) && num > 0) ? num : null;
+      saveHistory();
+      renderHistoryDashboard();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function deleteHistoryRow(rowId) {
+      state.historyLog = state.historyLog.filter(r => r.id !== rowId);
+      saveHistory();
+      renderAll();
+      showToast('Deleted snapshot entry from history log.', 'amber');
+    }
+
+    function resetHistoryToSeed() {
+      state.historyLog = JSON.parse(JSON.stringify(SEED_HISTORY_SNAPSHOTS));
+      saveHistory();
+      renderAll();
+      showToast('Restored Oct–Nov 2026 baseline history snapshots.', 'emerald');
+    }
+
+    function exportHistoryCSV() {
+      const headers = ['Timestamp', 'Asset', 'Fundamental', 'Sentiment', 'Composite', 'Regime', 'EntryPrice', 'FollowUpPrice', 'ReturnPct', 'Accuracy'];
+      const rows = state.historyLog.map(r => {
+        const ev = evaluateHistoryRow(r);
+        return [
+          `"${r.timestamp}"`,
+          r.assetId,
+          r.fundScore,
+          r.sentScore,
+          r.compositeScore,
+          r.regime,
+          r.entryPrice,
+          r.followUpPrice ?? '',
+          ev.retPct !== null ? ev.retPct.toFixed(2) : '',
+          ev.status
+        ].join(',');
+      });
+      const csv = [headers.join(','), ...rows].join('\n');
+      triggerFileDownload(csv, `macro_scorecard_history_${getTodayDateString()}.csv`, 'text/csv');
+      showToast('Exported Scoring History as CSV.', 'emerald');
+    }
+
+    function exportHistoryJSON() {
+      const json = JSON.stringify(state.historyLog, null, 2);
+      triggerFileDownload(json, `macro_scorecard_history_${getTodayDateString()}.json`, 'application/json');
+      showToast('Exported Scoring History as JSON.', 'emerald');
+    }
+
+    function importHistoryJSON(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (!Array.isArray(imported)) throw new Error('Invalid format');
+          state.historyLog = imported;
+          saveHistory();
+          renderAll();
+          showToast(`Imported ${imported.length} historical snapshots.`, 'emerald');
+        } catch (err) {
+          showToast('Invalid JSON history file.', 'rose');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function triggerFileDownload(content, filename, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function copyPerformanceMarkdown() {
+      const stats = computeCalibrationStats();
+      let md = `### Macro Scorecard Historical Performance Report (${getTodayDateString()})\n`;
+      md += `- **Directional Hit Rate:** \`${stats.overallHitRate.toFixed(1)}%\` (${stats.totalDirectional} directional logs)\n`;
+      md += `- **High-Conviction Hit Rate (&ge; &plusmn;1.5):** \`${stats.highConvRate.toFixed(1)}%\` (${stats.highConvCount} logs)\n`;
+      md += `- **Pillar Attribution:** Fundamental \`${stats.fundRate.toFixed(0)}%\` vs. Sentiment \`${stats.sentRate.toFixed(0)}%\` — *${stats.calibrationAdvice}*\n\n`;
+      md += `| Date | Asset | Fund | Sent | Composite | Entry | Follow-Up | Return % | Accuracy |\n`;
+      md += `| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n`;
+      state.historyLog.slice(-15).reverse().forEach(r => {
+        const ev = evaluateHistoryRow(r);
+        const retStr = ev.retPct !== null ? `${ev.retPct >= 0 ? '+' : ''}${ev.retPct.toFixed(2)}%` : '—';
+        md += `| ${r.timestamp} | **${r.assetId}** | ${formatSignedScore(r.fundScore)} | ${formatSignedScore(r.sentScore)} | **${formatSignedScore(r.compositeScore)}** | ${r.entryPrice} | ${r.followUpPrice ?? 'Live'} | ${retStr} | ${ev.status} |\n`;
+      });
+
+      const textArea = document.createElement('textarea');
+      textArea.value = md;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showToast('Copied Backtest Performance Report to clipboard!', 'emerald');
+      } catch (_) {
+        showToast('Failed to copy report.', 'rose');
+      }
+      document.body.removeChild(textArea);
+    }
+
+    function selectAsset(assetId) {
+      state.selectedAssetId = assetId;
+      state.historyChartAsset = assetId;
+      saveState();
+      renderAll();
+    }
+
+    function setScoringMode(mode) {
+      state.scoringMode = mode;
+      if (mode === 'quant') {
+        applyQuantModel();
+        showToast('Auto-Quant Model active: driven by Surprises, Betas, COT & Fear/Greed.', 'emerald');
+      } else {
+        showToast('Analyst Override active: manual slider adjustments locked.', 'amber');
+      }
+      saveState();
+      renderAll();
+    }
+
+    function setMacroRegime(regime) {
+      state.macroRegime = regime;
+      applyQuantModel();
+      saveState();
+      renderAll();
+      showToast(
+        regime === 'inflation'
+          ? 'Regime: Hawkish Inflation (Strong Jobs/GDP fuel rate-hike pressure).'
+          : 'Regime: Growth / Liquidity (Strong Jobs/GDP boost cyclical earnings).',
+        regime === 'inflation' ? 'rose' : 'emerald'
+      );
+    }
+
+    function updateFearGreed(val) {
+      state.fearGreedIndex = clamp(parseInt(val, 10) || 0, 0, 100);
+      state.fgManualDate = todayKey();
+      applyQuantModel();
+      saveState();
+      renderAll();
+    }
+
+    function setFearGreedMode(mode) {
+      state.fearGreedMode = mode;
+      applyQuantModel();
+      saveState();
+      renderAll();
+    }
+
+    function updateEconomicInput(id, field, rawVal) {
+      const target = state.indicators.find(i => i.id === id);
+      const num = parseFloat(rawVal);
+      if (!target || isNaN(num)) return;
+      target[field] = num;
+      target.manualDate = todayKey();
+      applyQuantModel();
+      saveState();
+      renderAll();
+    }
+
+    function updateAssetCot(field, rawVal) {
+      const asset = state.assets[state.selectedAssetId];
+      const num = parseFloat(rawVal);
+      if (!asset || isNaN(num)) return;
+      asset.cot.manualDate = todayKey();
+      if (field === 'longPct') asset.cot.longPct = clamp(num, 0, 100);
+      if (field === 'weeklyChangePct') asset.cot.weeklyChangePct = clamp(num, -50, 50);
+      if (state.scoringMode === 'quant') applyQuantModel();
+      saveState();
+      renderAll();
+    }
+
+    function updateBetaWeight(assetId, factor, rawVal) {
+      if (state.betaLocked) return;
+      const num = parseFloat(rawVal);
+      if (isNaN(num) || !state.betaWeights[assetId]) return;
+      state.betaWeights[assetId][factor] = clamp(num, -2.5, 2.5);
+      applyQuantModel();
+      saveState();
+      renderAll();
+    }
+
+    function resetBetaWeights() {
+      state.betaWeights = JSON.parse(JSON.stringify(DEFAULT_BETA_WEIGHTS));
+      applyQuantModel();
+      saveState();
+      renderAll();
+      showToast('Restored default institutional sensitivity betas.', 'emerald');
+    }
+
+    function toggleBetaModal(show) {
+      const modal = document.getElementById('beta-modal');
+      if (!modal) return;
+      if (show) {
+        renderBannerAndRegime();
+        renderBetaMatrixTable();
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      } else {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function handleSliderChange(pillar, factorKey, rawVal) {
+      const asset = state.assets[state.selectedAssetId];
+      if (!asset) return;
+
+      if (state.scoringMode === 'quant') {
+        state.scoringMode = 'manual';
+        updateModeButtonsUI();
+        showToast('Switched to Analyst Override mode to preserve manual tuning.', 'amber');
+      }
+
+      asset[pillar][factorKey] = round1(clamp(parseFloat(rawVal), -1.0, 1.0));
+      saveState();
+      renderAssetCards();
+      renderScorecardTable();
+      renderInspector();
+    }
+
+    function resetAllToDefaults() {
+      localStorage.removeItem(STORAGE_KEY);
+      state.scoringMode = 'quant';
+      state.macroRegime = 'inflation';
+      state.regimeNote = 'Sticky 3.8% CPI & resilient 165k NFP keep Fed hawkish for Dec; strong data pressures rate-sensitive multiples & gold.';
+      state.betaLocked = true;
+      state.fearGreedIndex = 14;
+      state.fearGreedMode = 'contrarian';
+      state.indicators = JSON.parse(JSON.stringify(ECONOMIC_INDICATORS));
+      state.betaWeights = JSON.parse(JSON.stringify(DEFAULT_BETA_WEIGHTS));
+      state.assets = JSON.parse(JSON.stringify(DEFAULT_ASSETS));
+      state.macro = JSON.parse(JSON.stringify(DEFAULT_MACRO));
+      applyQuantModel();
+      renderAll();
+      showToast('Reset all Surprises, Betas, COT & Asset Scores to model baseline.', 'emerald');
+    }
+
+    function copyJournalMarkdown() {
+      const nowStr = new Date().toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      const fgSignals = computeFearGreedSignals();
+      const surprises = computeIndicatorSurprises();
+
+      let md = `### Macro & Sentiment Scorecard (${nowStr})\n`;
+      md += `- **Macro Anchors:** US 10Y: \`${state.macro.us10y.val.toFixed(2)}%\` | US 2Y: \`${state.macro.us2y.val.toFixed(2)}%\` | VIX: \`${state.macro.vix.val.toFixed(2)}\` | DXY: \`${state.macro.dxy.val.toFixed(2)}\`\n`;
+      md += `- **Regime & Sentiment:** \`${state.macroRegime === 'inflation' ? 'Inflation Focus (Good = Bad)' : 'Growth Focus (Good = Good)'}\` | CNN Fear & Greed: \`${fgSignals.fg}/100 (${fgSignals.zone})\` (${state.fearGreedMode.toUpperCase()})\n`;
+      md += `- **Economic Surprises:** ${surprises.map(s => `${s.name}: \`${s.actual}${s.unit}\` vs \`${s.expected}${s.unit}\` (Z:${formatSignedScore(s.zScore)})`).join(' | ')}\n\n`;
+      md += `| Asset | Spot Price | Fundamental | Sentiment | Composite | Overall Bias | COT Long (Wk Chg) | Alerts |\n`;
+      md += `| :--- | :---: | :---: | :---: | :---: | :--- | :---: | :--- |\n`;
+
+      Object.values(state.assets).forEach(asset => {
+        const { fundScore, sentScore, compositeScore, cautionTag } = getAssetScores(asset);
+        const bias = getBiasMeta(compositeScore);
+        const cotChg = `${asset.cot.weeklyChangePct >= 0 ? '+' : ''}${asset.cot.weeklyChangePct.toFixed(1)}%`;
+        const alertStr = cautionTag ? cautionTag.label : '—';
+        md += `| **${asset.shortName} (${asset.id})** | ${formatPrice(asset)} | ${formatSignedScore(fundScore)} | ${formatSignedScore(sentScore)} | **${formatSignedScore(compositeScore)}** | **${bias.label}** | ${asset.cot.longPct.toFixed(1)}% (${cotChg}) | ${alertStr} |\n`;
+      });
+
+      const textArea = document.createElement('textarea');
+      textArea.value = md;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showToast('Copied Markdown Scorecard table to clipboard!', 'emerald');
+      } catch (err) {
+        showToast('Failed to copy to clipboard.', 'rose');
+      }
+      document.body.removeChild(textArea);
+    }
+
+    function showToast(message, tone = 'emerald') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        emerald: 'bg-emerald-950/95 border-emerald-500/50 text-emerald-200',
+        amber: 'bg-amber-950/95 border-amber-500/50 text-amber-200',
+        rose: 'bg-rose-950/95 border-rose-500/50 text-rose-200'
+      };
+      toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl border shadow-xl text-xs font-medium backdrop-blur transition-all duration-300 ${colors[tone] || colors.emerald}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(8px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    // =========================================================================
+    // 7. INITIALIZATION & 60-SECOND LIVE POLLING LOOP
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', async () => {
+      loadSavedState();
+      await loadAutoData();
+      applyQuantModel();
+      renderAll();
+      syncLiveMarketData(false);
+
+      setInterval(() => {
+        state.countdown -= 1;
+        if (state.countdown <= 0) {
+          state.countdown = 300;
+          syncLiveMarketData(false);
+        }
+        const cdEl = document.getElementById('sync-countdown');
+        if (cdEl) cdEl.textContent = `${state.countdown}s`;
+      }, 1000);
+    });
+  </script>
+</body>
+</html>
