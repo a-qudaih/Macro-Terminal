@@ -2296,6 +2296,11 @@
       const si = state.staleInputs = {};
 
       ['us10y', 'vix', 'dxy'].forEach(k => { if (m[k]) Object.assign(state.macro[k], { val: m[k].val, mu: m[k].mu, sd: m[k].sd }); });
+      // Daily changes come from data.json too. Before this they stayed at hardcoded defaults (+5.0 bps / +8.4% / +0.35%)
+      // whenever the browser's live feed was down, and the +5.0 bps fed the Central Bank Policy score via yieldShock.
+      if (m.us10y && m.us10y.prevClose != null) state.macro.us10y.chgBps = (m.us10y.val - m.us10y.prevClose) * 100;
+      if (m.vix && m.vix.changePct != null) state.macro.vix.chgPct = m.vix.changePct;
+      if (m.dxy && m.dxy.changePct != null) state.macro.dxy.chgPct = m.dxy.changePct;
       ['vix3m', 'usdjpy', 'eurusd'].forEach(k => {
         if (m[k] && m[k].val != null) state.macro[k] = { val: m[k].val, mu: m[k].mu, sd: m[k].sd, asOf: m[k].asOf };
         si[k] = !m[k] || isOld(m[k], 4);
