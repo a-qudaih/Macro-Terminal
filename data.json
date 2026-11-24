@@ -1,8 +1,8 @@
 {
- "updated": "2026-11-24T10:19:35.944564+00:00",
+ "updated": "2026-11-24T12:52:28.947260+00:00",
  "status": {
   "yahoo": "ok",
-  "fred": "FAILED (kept previous): list index out of range",
+  "fred": "ok",
   "cftc": "ok"
  },
  "macro": {
@@ -13,36 +13,78 @@
    "sma200": 4.60649498462677,
    "mu": 5.036950000127157,
    "sd": 0.1529606018387701,
-   "val": 4.918
+   "val": 4.918,
+   "asOf": "2026-11-24"
   },
   "vix": {
    "prevClose": 26.6200008392334,
-   "changePct": 4.620582727231891,
-   "sma50": 18.838600025177,
-   "sma200": 18.75420003414154,
-   "mu": 18.357333358128866,
-   "sd": 4.3153113948120865,
-   "val": 27.85
+   "changePct": 10.142746339764413,
+   "sma50": 18.868000011444092,
+   "sma200": 18.761550030708314,
+   "mu": 18.381833346684775,
+   "sd": 4.372924378260384,
+   "val": 29.32,
+   "asOf": "2026-11-24"
   },
   "dxy": {
    "prevClose": 104.31999969482422,
-   "changePct": -0.16200124167811644,
-   "sma50": 102.07322036743165,
-   "sma200": 100.07870525360107,
-   "mu": 101.59968350728353,
-   "sd": 1.3941973563907624,
-   "val": 104.151
+   "changePct": -0.37960093556620234,
+   "sma50": 102.06868041992188,
+   "sma200": 100.07757026672363,
+   "mu": 101.59590021769206,
+   "sd": 1.3875611721443886,
+   "val": 103.924,
+   "asOf": "2026-11-24"
   },
   "us2y": {
-   "val": 4.63
+   "val": 4.63,
+   "asOf": "2026-11-20"
   },
   "real10y": {
    "val": 2.77,
-   "mu": 2.7185964912280705,
-   "sd": 0.1556924385648995
+   "mu": 2.701,
+   "sd": 0.17024198463755447,
+   "asOf": "2026-11-20"
   },
   "be10": {
-   "val": 2.13
+   "val": 2.13,
+   "asOf": "2026-11-23"
+  },
+  "vix3m": {
+   "prevClose": 30.940000534057617,
+   "changePct": -17.582419005033515,
+   "sma50": 20.119600067138673,
+   "sma200": 20.768700075149535,
+   "mu": 19.82450008392334,
+   "sd": 2.657965730945698,
+   "val": 25.5,
+   "asOf": "2026-11-24"
+  },
+  "usdjpy": {
+   "prevClose": 158.93099975585938,
+   "changePct": 0.12206570426074018,
+   "sma50": 158.06010040283203,
+   "sma200": 158.8949252319336,
+   "mu": 157.61963348388673,
+   "sd": 1.6087189748103714,
+   "val": 159.125,
+   "asOf": "2026-11-24"
+  },
+  "eurusd": {
+   "prevClose": 1.097152829170227,
+   "changePct": -0.050387617433856904,
+   "sma50": 1.1220013523101806,
+   "sma200": 1.149741285443306,
+   "mu": 1.1284419397513072,
+   "sd": 0.019384286419866576,
+   "val": 1.0966,
+   "asOf": "2026-11-24"
+  },
+  "hyOAS": {
+   "val": 3.76,
+   "mu": 2.90292,
+   "sd": 0.23006232546855646,
+   "asOf": "2026-11-20"
   }
  },
  "prices": {
@@ -83,13 +125,13 @@
    "sd": 76.97329846593057
   },
   "GER40": {
-   "price": 25179.88,
+   "price": 25149.31,
    "prevClose": 25337.26953125,
-   "changePct": -0.6211779491704142,
-   "sma50": 25605.261875,
-   "sma200": 25001.006533203126,
-   "mu": 25625.259244791665,
-   "sd": 460.1466278638849
+   "changePct": -0.741830255301096,
+   "sma50": 25604.65046875,
+   "sma200": 25000.853681640627,
+   "mu": 25624.749739583334,
+   "sd": 460.6561412664376
   },
   "JP225": {
    "price": 58644.63,
@@ -101,49 +143,61 @@
    "sd": 3183.562558452516
   },
   "XAUUSD": {
-   "price": 3619.8,
+   "price": 3638.0,
    "prevClose": 3651.39990234375,
-   "changePct": -0.865418830828871,
-   "sma50": 4082.5919873046873,
-   "sma200": 4430.740495605469,
-   "mu": 4139.294982910156,
-   "sd": 225.5255187428614
+   "changePct": -0.3669798625767862,
+   "sma50": 4082.955986328125,
+   "sma200": 4430.831495361328,
+   "mu": 4139.598315429687,
+   "sd": 224.83778333764545
   }
  },
  "cot": {
   "US500": {
    "longPct": 41.86,
    "weeklyChangePct": 4.21,
+   "cotIndex": 33.9,
+   "cotWeeks": 156,
    "reportDate": "2026-11-17",
    "market": "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE"
   },
   "US100": {
    "longPct": 51.52,
    "weeklyChangePct": -9.77,
+   "cotIndex": 34.4,
+   "cotWeeks": 156,
    "reportDate": "2026-11-17",
    "market": "NASDAQ MINI - CHICAGO MERCANTILE EXCHANGE"
   },
   "US30": {
    "longPct": 56.52,
    "weeklyChangePct": -9.38,
+   "cotIndex": 60.9,
+   "cotWeeks": 156,
    "reportDate": "2026-11-17",
    "market": "DJIA Consolidated - CHICAGO BOARD OF TRADE"
   },
   "US2000": {
    "longPct": 46.63,
    "weeklyChangePct": -2.07,
+   "cotIndex": 65.0,
+   "cotWeeks": 156,
    "reportDate": "2026-11-17",
    "market": "RUSSELL E-MINI - CHICAGO MERCANTILE EXCHANGE"
   },
   "JP225": {
    "longPct": 63.44,
    "weeklyChangePct": 4.92,
+   "cotIndex": 51.6,
+   "cotWeeks": 156,
    "reportDate": "2026-11-17",
    "market": "NIKKEI STOCK AVERAGE YEN DENOM - CHICAGO MERCANTILE EXCHANGE"
   },
   "XAUUSD": {
    "longPct": 82.71,
    "weeklyChangePct": -3.52,
+   "cotIndex": 59.1,
+   "cotWeeks": 156,
    "reportDate": "2026-11-17",
    "market": "GOLD - COMMODITY EXCHANGE INC."
   }
@@ -160,29 +214,34 @@
    "expected": 4.25,
    "releaseISO": "2026-11-07",
    "releaseDate": "Nov 07",
-   "needsConsensus": false
+   "needsConsensus": false,
+   "actual": 4.0
   },
   "cpi": {
    "expected": 3.7,
    "releaseISO": "2026-11-10",
    "releaseDate": "Nov 10",
-   "needsConsensus": false
+   "needsConsensus": false,
+   "actual": 4.08
   },
   "unemployment": {
    "expected": 4.2,
    "releaseISO": "2026-11-06",
    "releaseDate": "Nov 06",
-   "needsConsensus": false
+   "needsConsensus": false,
+   "actual": 4.1
   },
   "gdp": {
    "expected": 3.2,
    "releaseISO": "2026-10-29",
    "releaseDate": "Oct 29",
-   "needsConsensus": false
+   "needsConsensus": false,
+   "actual": 3.4
   }
  },
  "fearGreed": {
-  "value": 31,
-  "source": "vix-proxy (CNN unavailable)"
+  "value": 25,
+  "source": "vix-proxy (CNN unavailable)",
+  "asOf": "2026-11-24"
  }
 }
