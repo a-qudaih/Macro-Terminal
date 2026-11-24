@@ -12,7 +12,8 @@ TODAY = NOW.date().isoformat()
 
 YAHOO = {"US500": "^GSPC", "US100": "^NDX", "US30": "^DJI", "US2000": "^RUT",
          "GER40": "^GDAXI", "JP225": "^N225", "XAUUSD": "GC=F"}
-MACRO_Y = {"us10y": "^TNX", "vix": "^VIX", "dxy": "DX-Y.NYB"}
+MACRO_Y = {"us10y": "^TNX", "vix": "^VIX", "dxy": "DX-Y.NYB",
+           "vix3m": "^VIX3M", "usdjpy": "JPY=X", "eurusd": "EURUSD=X"}
 # CFTC legacy futures-only (non-commercial). GER40 has no CFTC contract: keep manual.
 COT = {"US500": "E-MINI S&P 500%", "US100": "NASDAQ%MINI%", "US30": "DJIA%", "US2000": "RUSSELL%E-MINI%",
        "JP225": "NIKKEI%", "XAUUSD": "GOLD - COMMODITY EXCHANGE%"}
@@ -38,29 +39,40 @@ def yahoo(sym):
                 sma50=sum(c[-50:]) / len(c[-50:]), sma200=sum(c[-200:]) / len(c[-200:]), mu=mu, sd=sd)
 
 def fred(series, n=1):
-    q = urllib.parse.urlencode(dict(series_id=series, api_key=KEY, file_type="json", sort_order="desc", limit=n))
+    """Latest n valid observations, newest first. Over-fetches because FRED returns '.' placeholders
+    for days not yet published; with limit=n those placeholders were filtered out and left an empty list."""
+    q = urllib.parse.urlencode(dict(series_id=series, api_key=KEY, file_type="json", sort_order="desc", limit=n + 15))
     obs = get("https://api.stlouisfed.org/fred/series/observations?" + q)["observations"]
-    return [(o["date"], float(o["value"])) for o in obs if o["value"] != "."]
+    vals = [(o["date"], float(o["value"])) for o in obs if o["value"] not in (".", "", None)]
+    if len(vals) < n:
+        raise RuntimeError(f"{series}: only {len(vals)} valid obs, need {n}")
+    return vals[:n]
 
 def cot(pattern):
-    q = urllib.parse.urlencode({"$where": f"upper(market_and_exchange_names) like '{pattern.upper()}'",
-                                "$order": "report_date_as_yyyy_mm_dd DESC", "$limit": "60"})
+    q = urllib.parse.urlencode({
+        "$select": "market_and_exchange_names,report_date_as_yyyy_mm_dd,open_interest_all,noncomm_positions_long_all,noncomm_positions_short_all",
+        "$where": f"upper(market_and_exchange_names) like '{pattern.upper()}'",
+        "$order": "report_date_as_yyyy_mm_dd DESC", "$limit": "2500"})
     rows = get("https://publicreporting.cftc.gov/resource/6dca-aqww.json?" + q)
     latest = max(r["report_date_as_yyyy_mm_dd"] for r in rows)
     top = max((r for r in rows if r["report_date_as_yyyy_mm_dd"] == latest), key=lambda r: float(r.get("open_interest_all", 0)))
     mine = sorted((r for r in rows if r["market_and_exchange_names"] == top["market_and_exchange_names"]),
                   key=lambda r: r["report_date_as_yyyy_mm_dd"], reverse=True)
     pct = lambda r: float(r["noncomm_positions_long_all"]) / (float(r["noncomm_positions_long_all"]) + float(r["noncomm_positions_short_all"])) * 100
-    return dict(longPct=round(pct(mine[0]), 2), weeklyChangePct=round(pct(mine[0]) - pct(mine[1]), 2),
+    hist = [pct(r) for r in mine[:156]]          # up to 3 years of weekly reports
+    lo, hi = min(hist), max(hist)
+    cot_index = round((hist[0] - lo) / (hi - lo) * 100, 1) if hi > lo else 50.0
+    return dict(longPct=round(hist[0], 2), weeklyChangePct=round(hist[0] - pct(mine[1]), 2),
+                cotIndex=cot_index, cotWeeks=len(hist),
                 reportDate=latest[:10], market=top["market_and_exchange_names"])
 
 def fear_greed(vix):
     try:
         d = get("https://production.dataviz.cnn.io/index/fearandgreed/graphdata",
                 {"Referer": "https://edition.cnn.com/", "Origin": "https://edition.cnn.com"})
-        return dict(value=round(d["fear_and_greed"]["score"]), source="cnn")
+        return dict(value=round(d["fear_and_greed"]["score"]), source="cnn", asOf=TODAY)
     except Exception:
-        return dict(value=round(max(0, min(100, 100 - (vix - 12) / 23 * 100))), source="vix-proxy (CNN unavailable)")
+        return dict(value=round(max(0, min(100, 100 - (vix - 12) / 23 * 100))), source="vix-proxy (CNN unavailable)", asOf=TODAY)
 
 def main():
     path = os.path.join(HERE, "data.json")
@@ -76,21 +88,37 @@ def main():
 
     def prices():
         for k, s in YAHOO.items(): out["prices"][k] = yahoo(s)
-        for k, s in MACRO_Y.items(): out["macro"][k] = yahoo(s) | {"val": None}
-        for k in MACRO_Y: out["macro"][k]["val"] = out["macro"][k].pop("price")
+        for k, s in MACRO_Y.items():
+            try: out["macro"][k] = yahoo(s) | {"val": None, "asOf": TODAY}
+            except Exception as e: st[f"yahoo_{k}"] = f"FAILED (kept previous): {e}"
+        for k in MACRO_Y:
+            if "price" in out["macro"].get(k, {}): out["macro"][k]["val"] = out["macro"][k].pop("price")
     run("yahoo", prices)
 
     def fred_block():
         if not KEY: raise RuntimeError("FRED_API_KEY not set")
-        m = out["macro"]
-        m["us2y"] = {"val": fred("DGS2")[0][1]}
-        ry = fred("DFII10", 60); mu, sd = stats([v for _, v in ry])
-        m["real10y"] = {"val": ry[0][1], "mu": mu, "sd": sd}
-        m["be10"] = {"val": fred("T10YIE")[0][1]}
-        cpi = fred("CPIAUCSL", 13)
-        vals = {"rates": fred("DFEDTARU")[0][1], "cpi": round((cpi[0][1] / cpi[12][1] - 1) * 100, 2),
-                "unemployment": fred("UNRATE")[0][1], "gdp": fred("A191RL1Q225SBEA")[0][1]}
-        for k, v in vals.items(): out["indicators"].setdefault(k, {})["actual"] = round(v, 2)
+        m, failed = out["macro"], []
+
+        def part(name, fn):
+            try: fn()
+            except Exception as e: failed.append(f"{name}: {e}")
+
+        def level(key, series):
+            d, v = fred(series)[0]; m[key] = {"val": v, "asOf": d}
+        def level_z(key, series, n):
+            obs = fred(series, n); mu, sd = stats([v for _, v in obs]); m[key] = {"val": obs[0][1], "mu": mu, "sd": sd, "asOf": obs[0][0]}
+        def ind(key, fn):
+            v = fn(); out["indicators"].setdefault(key, {})["actual"] = round(v, 2)
+
+        part("us2y", lambda: level("us2y", "DGS2"))
+        part("be10", lambda: level("be10", "T10YIE"))
+        part("real10y", lambda: level_z("real10y", "DFII10", 60))
+        part("hyOAS", lambda: level_z("hyOAS", "BAMLH0A0HYM2", 250))      # high-yield credit spread (%)
+        part("rates", lambda: ind("rates", lambda: fred("DFEDTARU")[0][1]))
+        part("unemployment", lambda: ind("unemployment", lambda: fred("UNRATE")[0][1]))
+        part("gdp", lambda: ind("gdp", lambda: fred("A191RL1Q225SBEA")[0][1]))
+        part("cpi", lambda: ind("cpi", lambda: (lambda c: (c[0][1] / c[12][1] - 1) * 100)(fred("CPIAUCSL", 13))))
+        if failed: raise RuntimeError(" | ".join(failed))
     run("fred", fred_block)
 
     def cot_block():

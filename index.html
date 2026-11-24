@@ -659,6 +659,10 @@
     const HISTORY_STORAGE_KEY = 'macro_scorecard_v4_history_log';
     const LAST_AUTO_LOG_DATE_KEY = 'macro_scorecard_v4_last_auto_date';
 
+    // |composite| below this = NO-TRADE zone. One constant drives the bias label, the counter-trend tag
+    // AND the backtest, so what the scorecard calls "neutral" is exactly what the backtest treats as neutral.
+    const NO_TRADE_BAND = 1.0;
+
     // Actual vs. Consensus Economic Releases (Late Nov 2026 Calibration)
     const ECONOMIC_INDICATORS = [
       { id: 'rates', name: 'Fed Target Rate', actual: 4.50, expected: 4.25, stdDev: 0.25, unit: '%', releaseDate: 'Nov 07', note: 'Hawkish hold / Dec hike risk', isRateOrInflation: true, invertRawSurprise: false },
@@ -696,8 +700,8 @@
     const SENTIMENT_FACTORS = [
       { key: 'fearGreedOverlay', label: '1. Auto CNN Fear & Greed Contrarian', hint: 'Auto-linked to 0–100 Fear & Greed Gauge (non-redundant)', autoLocked: true, sourceTag: 'AUTO: FEAR & GREED' },
       { key: 'priceStructure', label: '2. Price Structure & 50/200 SMA Distance', hint: 'Distance vs 50-day & 200-day SMAs + trend momentum' },
-      { key: 'cotPositioning', label: '3. COT Institutional Positioning & Shift', hint: 'CFTC Net Long/Short % & weekly institutional flow' },
-      { key: 'crossAssetVol', label: '4. Cross-Asset Volatility & Credit Spreads', hint: 'VIX regime, bond MOVE index & high-yield spreads' },
+      { key: 'cotPositioning', label: '3. COT Institutional Positioning & Shift', hint: 'CFTC 3-yr COT index (percentile of non-commercial long %) + weekly flow (half weight)' },
+      { key: 'crossAssetVol', label: '4. Cross-Asset Volatility & Credit Spreads', hint: 'VIX/VIX3M term structure + high-yield credit spread. VIX level excluded (already inside Fear & Greed)' },
       { key: 'seasonalityCatalyst', label: '5. Seasonality & Geopolitical Risk Premium', hint: 'Historical seasonal bias & safe-haven event premium' }
     ];
 
@@ -894,6 +898,9 @@
       fearGreedIndex: 14,
       fearGreedMode: 'contrarian', // 'contrarian' or 'linear'
       countdown: 300,
+      staleInputs: {},   // inputs whose data is too old -> their score slot is zeroed and flagged
+      staleSlots: {},    // per-asset list of slots that were zeroed because an input is stale
+      fgReliable: true,  // false when Fear & Greed is the VIX-proxy fallback (not a real CNN reading)
       indicators: JSON.parse(JSON.stringify(ECONOMIC_INDICATORS)),
       betaWeights: JSON.parse(JSON.stringify(DEFAULT_BETA_WEIGHTS)),
       macro: JSON.parse(JSON.stringify(DEFAULT_MACRO)),
@@ -915,12 +922,14 @@
           if (typeof parsed.betaLocked === 'boolean') state.betaLocked = parsed.betaLocked;
           if (typeof parsed.fearGreedIndex === 'number') state.fearGreedIndex = clamp(parsed.fearGreedIndex, 0, 100);
           if (parsed.fearGreedMode) state.fearGreedMode = parsed.fearGreedMode;
+          if (parsed.fgManualDate) state.fgManualDate = parsed.fgManualDate;
           if (Array.isArray(parsed.indicators)) {
             parsed.indicators.forEach(savedInd => {
               const target = state.indicators.find(i => i.id === savedInd.id);
               if (target) {
                 if (typeof savedInd.actual === 'number') target.actual = savedInd.actual;
                 if (typeof savedInd.expected === 'number') target.expected = savedInd.expected;
+                if (savedInd.manualDate) target.manualDate = savedInd.manualDate;
               }
             });
           }
@@ -976,7 +985,8 @@
           betaLocked: state.betaLocked,
           fearGreedIndex: state.fearGreedIndex,
           fearGreedMode: state.fearGreedMode,
-          indicators: state.indicators.map(i => ({ id: i.id, actual: i.actual, expected: i.expected })),
+          fgManualDate: state.fgManualDate || null,
+          indicators: state.indicators.map(i => ({ id: i.id, actual: i.actual, expected: i.expected, manualDate: i.manualDate || null })),
           betaWeights: state.betaWeights,
           assets: Object.fromEntries(
             Object.entries(state.assets).map(([k, v]) => [k, {
@@ -1022,9 +1032,11 @@
         if (rel > new Date()) rel.setFullYear(rel.getFullYear() - 1);
         const ageDays = Math.max(0, (Date.now() - rel.getTime()) / 86400000);
         const decay = Math.exp(-ageDays / 21);
-        const zScore = rawZ * decay;
+        const stale = !!ind.autoStale;               // no fresh auto value (e.g. FRED failed) and not typed in today
+        const zScore = stale ? 0 : rawZ * decay;
         return {
           ...ind,
+          stale,
           rawDiff,
           ageDays: Math.round(ageDays),
           decay,
@@ -1088,20 +1100,35 @@
     function syncAutoDerivedSlots() {
       const surprises = computeIndicatorSurprises();
       const sMap = Object.fromEntries(surprises.map(s => [s.id, s.zScore]));
+      const sStale = Object.fromEntries(surprises.map(s => [s.id, !!s.stale]));
       const fgSignals = computeFearGreedSignals();
       const growthRegimeSign = state.macroRegime === 'inflation' ? -0.45 : 0.85;
+      state.staleSlots = {};
 
       Object.values(state.assets).forEach(asset => {
         const b = state.betaWeights[asset.id];
         const isGold = asset.id === 'XAUUSD';
+        const slots = (state.staleSlots[asset.id] = []);
 
         const cpiTerm = (-sMap.cpi) * b.cpi;
         const laborTerm = (sMap.unemployment * growthRegimeSign) * b.labor;
         const growthTerm = (((sMap.gdp + sMap.pmi) / 2) * growthRegimeSign) * b.growth;
         const aggSurprise = (cpiTerm + laborTerm + growthTerm) / 3.0;
         asset.fundamental.economicSurprise = round1(clamp(aggSurprise, -1.0, 1.0));
+        if (['cpi', 'unemployment', 'gdp', 'pmi'].some(id => sStale[id])) slots.push('economicSurprise');
+        if (sStale.rates) slots.push('monetaryPolicy');
 
-        asset.sentiment.fearGreedOverlay = isGold ? fgSignals.goldScore : fgSignals.equityScore;
+        // Fear & Greed. Contrarian fade of an EXTREME (<=20 / >=80) is halved when price trend disagrees with it
+        // (buying extreme fear below the 200d SMA, or fading extreme greed above it, is fighting the trend).
+        let fg = isGold ? fgSignals.goldScore : fgSignals.equityScore;
+        const extreme = fgSignals.fg <= 20 || fgSignals.fg >= 80;
+        if (!isGold && extreme && state.fearGreedMode === 'contrarian' && asset.sma200) {
+          const dist200 = (asset.price - asset.sma200) / asset.sma200;
+          if ((fg > 0 && dist200 < 0) || (fg < 0 && dist200 > 0)) fg = fg * 0.5;
+        }
+        // A VIX-proxy is not a real sentiment reading AND would double count VIX: exclude it.
+        if (state.fgReliable === false) { fg = 0; slots.push('fearGreedOverlay'); }
+        asset.sentiment.fearGreedOverlay = round1(fg);
       });
     }
 
@@ -1115,6 +1142,8 @@
       const us10y = state.macro.us10y.val;
       const vix = state.macro.vix.val;
       const dxy = state.macro.dxy.val;
+
+      const mark = (a, slot) => { (state.staleSlots[a.id] = state.staleSlots[a.id] || []).push(slot); };
 
       Object.values(state.assets).forEach(asset => {
         const b = state.betaWeights[asset.id];
@@ -1132,9 +1161,13 @@
         asset.fundamental.monetaryPolicy = round1(clamp(rawRateScore, -1.0, 1.0));
 
         // Real Yields & System Liquidity
-        const ryStress = state.macro.real10y ? zs('real10y', 1.9, 1.0) : rateStress;
-        const realYieldScore = (-ryStress * 0.85) * (b.rates / 1.15);
-        asset.fundamental.realYields = round1(clamp(realYieldScore, -1.0, 1.0));
+        if (state.staleInputs.real10y) {
+          asset.fundamental.realYields = 0; mark(asset, 'realYields');   // stale FRED value: don't score it
+        } else {
+          const ryStress = state.macro.real10y ? zs('real10y', 1.9, 1.0) : rateStress;
+          const realYieldScore = (-ryStress * 0.85) * (b.rates / 1.15);
+          asset.fundamental.realYields = round1(clamp(realYieldScore, -1.0, 1.0));
+        }
 
         // Earnings / Structural Demand
         const baseStruct = DEFAULT_ASSETS[asset.id].fundamental.earningsDemand;
@@ -1143,7 +1176,11 @@
 
         // Currency & FX Impulse
         const dxyStress = zs('dxy', 101.5, 3.5);
-        const fxScore = -dxyStress * b.usd * 0.65;
+        let fxScore = -dxyStress * b.usd * 0.65;
+        const pairZ = (k) => { const x = state.macro[k]; return (x && x.mu && x.sd && !state.staleInputs[k]) ? clamp((x.val - x.mu) / (2 * x.sd), -1, 1) : null; };
+        // JP225: USDJPY up = weak yen = exporter tailwind. GER40: EURUSD up = strong euro = exporter headwind. 50/50 blend with DXY.
+        if (asset.id === 'JP225') { const z = pairZ('usdjpy'); if (z !== null) fxScore = 0.5 * fxScore + 0.5 * (z * Math.abs(b.usd) * 0.65); }
+        if (asset.id === 'GER40') { const z = pairZ('eurusd'); if (z !== null) fxScore = 0.5 * fxScore + 0.5 * (-z * 0.5 * 0.65); }
         asset.fundamental.currencyImpulse = round1(clamp(fxScore, -1.0, 1.0));
 
         // Price Structure & 50/200 SMA Distance
@@ -1153,15 +1190,37 @@
         asset.sentiment.priceStructure = round1(trendScore);
 
         // COT Institutional Positioning & Shift
-        const lp = asset.cot.longPct;
-        const crowd = lp > 75 ? -((lp - 75) / 25) * 0.6 : lp < 25 ? ((25 - lp) / 25) * 0.6 : 0;
-        const netLevelScore = (((clamp(lp, 25, 75)) - 50) / 50) * 0.45 + crowd;
-        const flowMomentumScore = clamp(asset.cot.weeklyChangePct / 5.0, -0.7, 0.7);
-        asset.sentiment.cotPositioning = round1(clamp(netLevelScore + flowMomentumScore, -1.0, 1.0));
+        const ci = asset.cot.cotIndex;
+        const hasIdx = typeof ci === 'number' && (asset.cot.cotWeeks || 0) >= 52 && asset.cot.manualDate !== todayKey();
+        if (state.staleInputs['cot_' + asset.id]) {
+          asset.sentiment.cotPositioning = 0; mark(asset, 'cotPositioning');
+        } else if (hasIdx) {
+          // COT index = where long% sits in its own 3-year range (0 = most bearish ever, 100 = most bullish).
+          const lvl = ((clamp(ci, 10, 90) - 50) / 50) * 0.45;
+          const crowdI = ci > 90 ? -((ci - 90) / 10) * 0.6 : ci < 10 ? ((10 - ci) / 10) * 0.6 : 0;   // crowded -> fade
+          const flow = clamp(asset.cot.weeklyChangePct / 5.0, -0.35, 0.35);                          // weekly shift is noisy: half weight
+          asset.sentiment.cotPositioning = round1(clamp(lvl + crowdI + flow, -1.0, 1.0));
+        } else {
+          const lp = asset.cot.longPct;   // fallback (manual entry / no history): original raw long% logic
+          const crowd = lp > 75 ? -((lp - 75) / 25) * 0.6 : lp < 25 ? ((25 - lp) / 25) * 0.6 : 0;
+          const netLevelScore = (((clamp(lp, 25, 75)) - 50) / 50) * 0.45 + crowd;
+          const flowMomentumScore = clamp(asset.cot.weeklyChangePct / 5.0, -0.7, 0.7);
+          asset.sentiment.cotPositioning = round1(clamp(netLevelScore + flowMomentumScore, -1.0, 1.0));
+        }
 
         // Cross-Asset Volatility & Credit Spreads
-        const vixStress = zs('vix', 17.5, 13.0);
-        asset.sentiment.crossAssetVol = round1(clamp(isGold ? vixStress * 0.35 : -vixStress * 0.75, -1.0, 1.0));
+        // VIX *level* is deliberately not used: it is already one of the 7 components of CNN Fear & Greed.
+        const stressParts = [];
+        const v3 = state.macro.vix3m;
+        if (v3 && v3.val > 0 && !state.staleInputs.vix3m) stressParts.push(clamp((state.macro.vix.val / v3.val - 0.92) / 0.12, -1, 1)); // ratio > 1 = backwardation
+        const hy = state.macro.hyOAS;
+        if (hy && hy.mu && hy.sd && !state.staleInputs.hyOAS) stressParts.push(clamp((hy.val - hy.mu) / (2 * hy.sd), -1, 1));            // wide HY spread = credit stress
+        if (stressParts.length) {
+          const stress = stressParts.reduce((x, y) => x + y, 0) / stressParts.length;
+          asset.sentiment.crossAssetVol = round1(clamp(isGold ? stress * 0.35 : -stress * 0.75, -1.0, 1.0));
+        } else {
+          asset.sentiment.crossAssetVol = 0; mark(asset, 'crossAssetVol');
+        }
 
         // Seasonality & Geopolitical Risk Premium
         asset.sentiment.seasonalityCatalyst = round1(clamp(SEASON[isGold ? 'GOLD' : 'EQ'][new Date().getMonth()], -1.0, 1.0));
@@ -1197,7 +1256,20 @@
       if (!cautionTag && fundScore * sentScore < 0 && Math.min(Math.abs(fundScore), Math.abs(sentScore)) >= 0.8) {
         cautionTag = { type: 'conflict', label: 'PILLAR CONFLICT - STAND ASIDE', shortLabel: 'CONFLICT', badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/40' };
       }
-      return { fundScore, sentScore, compositeScore, cautionTag };
+      const staleCount = ((state.staleSlots || {})[asset.id] || []).length;
+      if (!cautionTag && staleCount > 0) {
+        cautionTag = { type: 'stale', label: `${staleCount} STALE INPUT${staleCount > 1 ? 'S' : ''} (SCORED 0)`, shortLabel: 'STALE', badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40' };
+      }
+      // Trend filter: a directional call against the 200d SMA is flagged, not hidden.
+      if (!cautionTag && asset.sma200) {
+        const above200 = asset.price >= asset.sma200;
+        if (compositeScore >= NO_TRADE_BAND && !above200) {
+          cautionTag = { type: 'countertrend', label: 'COUNTER-TREND LONG (< 200d SMA)', shortLabel: 'COUNTER-TREND', badgeClass: 'bg-orange-500/20 text-orange-300 border-orange-500/40' };
+        } else if (compositeScore <= -NO_TRADE_BAND && above200) {
+          cautionTag = { type: 'countertrend', label: 'COUNTER-TREND SHORT (> 200d SMA)', shortLabel: 'COUNTER-TREND', badgeClass: 'bg-orange-500/20 text-orange-300 border-orange-500/40' };
+        }
+      }
+      return { fundScore, sentScore, compositeScore, cautionTag, staleCount };
     }
 
     function getBiasMeta(score) {
@@ -1210,7 +1282,7 @@
           barColor: '#10b981'
         };
       }
-      if (score >= 1.0) {
+      if (score >= NO_TRADE_BAND) {
         return {
           label: 'Moderate Bullish',
           shortLabel: 'MOD BULLISH',
@@ -1219,7 +1291,7 @@
           barColor: '#34d399'
         };
       }
-      if (score > -1.0) {
+      if (score > -NO_TRADE_BAND) {
         return {
           label: 'Neutral / Range',
           shortLabel: 'NEUTRAL',
@@ -1450,13 +1522,13 @@
       const retPct = ((evalPrice - entry.entryPrice) / entry.entryPrice) * 100;
       const score = entry.compositeScore;
 
-      if (Math.abs(score) < 0.8) {
+      if (Math.abs(score) < NO_TRADE_BAND) {
         // Neutral band: hit if price stayed relatively range-bound (< 2.5% move)
         const isHit = Math.abs(retPct) <= 2.5;
         return { retPct, status: isHit ? 'RANGE HIT' : 'BREAKOUT', isHit, isManualFollowUp };
       }
 
-      const predictedBull = score >= 0.8;
+      const predictedBull = score >= NO_TRADE_BAND;
       const actualBull = retPct > 0;
       const isHit = (predictedBull && actualBull) || (!predictedBull && !actualBull);
 
@@ -1471,46 +1543,58 @@
     function computeCalibrationStats() {
       const evaluated = state.historyLog
         .map(row => ({ row, eval: evaluateHistoryRow(row) }))
-        .filter(item => !String(item.row.id).startsWith('seed-') && item.eval.retPct !== null && Math.abs(item.row.compositeScore) >= 0.8);
+        .filter(item => !String(item.row.id).startsWith('seed-') && item.eval.retPct !== null && Math.abs(item.row.compositeScore) >= NO_TRADE_BAND);
 
       const totalDirectional = evaluated.length;
       const totalHits = evaluated.filter(i => i.eval.isHit).length;
       const overallHitRate = totalDirectional ? (totalHits / totalDirectional) * 100 : 0;
+
+      // Baseline: equities drift up, so "always long" already wins often. Only the gap over it is edge.
+      const baselineLongRate = totalDirectional ? (evaluated.filter(i => i.eval.retPct > 0).length / totalDirectional) * 100 : 50;
+      const edgePts = overallHitRate - baselineLongRate;
+      const longCalls = evaluated.filter(i => i.row.compositeScore > 0);
+      const shortCalls = evaluated.filter(i => i.row.compositeScore < 0);
+      const longHitRate = longCalls.length ? (longCalls.filter(i => i.eval.isHit).length / longCalls.length) * 100 : null;
+      const shortHitRate = shortCalls.length ? (shortCalls.filter(i => i.eval.isHit).length / shortCalls.length) * 100 : null;
+
+      // Effective sample: daily snapshots with 5-day horizons overlap, and the 7 assets are highly correlated.
+      const distinctDays = new Set(evaluated.map(i => String(i.row.timestamp).slice(0, 10))).size;
+      const nEff = Math.floor(distinctDays / 5);
 
       // High conviction (>= +1.5 or <= -1.5)
       const highConv = evaluated.filter(i => Math.abs(i.row.compositeScore) >= 1.5);
       const highConvHits = highConv.filter(i => i.eval.isHit).length;
       const highConvRate = highConv.length ? (highConvHits / highConv.length) * 100 : 0;
 
-      // Compare Fundamental-led vs Sentiment-led accuracy to recommend weight tuning
-      let fundAlignedHits = 0;
-      let sentAlignedHits = 0;
+      // Pillar attribution: only rows where that pillar actually took a side (a 0.0 pillar is not a "miss")
+      let fundHits = 0, fundN = 0, sentHits = 0, sentN = 0;
       evaluated.forEach(({ row, eval: ev }) => {
         const actualBull = ev.retPct > 0;
-        if ((row.fundScore > 0 && actualBull) || (row.fundScore < 0 && !actualBull)) fundAlignedHits++;
-        if ((row.sentScore > 0 && actualBull) || (row.sentScore < 0 && !actualBull)) sentAlignedHits++;
+        if (row.fundScore !== 0) { fundN++; if ((row.fundScore > 0) === actualBull) fundHits++; }
+        if (row.sentScore !== 0) { sentN++; if ((row.sentScore > 0) === actualBull) sentHits++; }
       });
+      const fundRate = fundN ? (fundHits / fundN) * 100 : 50;
+      const sentRate = sentN ? (sentHits / sentN) * 100 : 50;
 
-      const fundRate = totalDirectional ? (fundAlignedHits / totalDirectional) * 100 : 50;
-      const sentRate = totalDirectional ? (sentAlignedHits / totalDirectional) * 100 : 50;
-
-      let calibrationAdvice = '50/50 Pillar Split Balanced';
-      if (totalDirectional < 12) {
-        calibrationAdvice = `Sample too small (n=${totalDirectional}, need 12+; US indices are correlated). No tuning advice. Seed rows excluded.`;
+      let calibrationAdvice;
+      if (nEff < 20) {
+        calibrationAdvice = `Too early: ${totalDirectional} calls = only ~${nEff} independent observations (${distinctDays} days; 5d windows overlap, assets are correlated). Need ~30+ before tuning weights. Always-long baseline: ${baselineLongRate.toFixed(0)}%.`;
+      } else if (fundRate - sentRate >= 12) {
+        calibrationAdvice = `Fundamentals leading (+${(fundRate - sentRate).toFixed(0)} pts) — vs ${baselineLongRate.toFixed(0)}% always-long baseline`;
+      } else if (sentRate - fundRate >= 12) {
+        calibrationAdvice = `Sentiment/Structure leading (+${(sentRate - fundRate).toFixed(0)} pts) — vs ${baselineLongRate.toFixed(0)}% always-long baseline`;
       } else {
-        if (fundRate - sentRate >= 12) {
-          calibrationAdvice = `Fundamentals leading (+${(fundRate - sentRate).toFixed(0)}% edge) — weight macro higher`;
-        } else if (sentRate - fundRate >= 12) {
-          calibrationAdvice = `Sentiment/Structure leading (+${(sentRate - fundRate).toFixed(0)}% edge) — trust trend/COT`;
-        } else {
-          calibrationAdvice = '50/50 Fundamental & Sentiment balance performing evenly';
-        }
+        calibrationAdvice = `Pillars performing evenly — vs ${baselineLongRate.toFixed(0)}% always-long baseline`;
       }
 
       return {
         totalSnapshots: state.historyLog.length,
         totalDirectional,
         overallHitRate,
+        baselineLongRate,
+        edgePts,
+        longHitRate, shortHitRate, longN: longCalls.length, shortN: shortCalls.length,
+        distinctDays, nEff,
         highConvCount: highConv.length,
         highConvRate,
         fundRate,
@@ -1608,6 +1692,7 @@
       document.getElementById('fg-impact-summary').innerHTML = `
         ${state.fearGreedMode === 'contrarian' ? 'Contrarian' : 'Linear'} Equity Overlay: <strong class="${eqColor}">${formatSignedScore(fgSignals.equityScore)}</strong>
         &nbsp;|&nbsp; Gold Safe-Haven: <strong class="${gdColor}">${formatSignedScore(fgSignals.goldScore)}</strong>
+        ${state.fgReliable === false ? '<div class="mt-1 text-amber-300">Proxy estimate (CNN unavailable): excluded from scores. Type the CNN value to use it.</div>' : ''}
       `;
 
       const btnContrarian = document.getElementById('btn-fg-contrarian');
@@ -1647,7 +1732,7 @@
         card.innerHTML = `
           <div class="flex items-start justify-between gap-1">
             <div>
-              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}</div>
+              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}</div>
               <div class="text-[10px] font-mono text-gray-500 mt-0.5">${item.releaseDate} • ${item.note}</div>
             </div>
             <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${zColor} shrink-0">Z: ${formatSignedScore(item.zScore)}</span>
@@ -1736,7 +1821,7 @@
       tbody.innerHTML = '';
 
       Object.values(state.assets).forEach(asset => {
-        const { fundScore, sentScore, compositeScore, cautionTag } = getAssetScores(asset);
+        const { fundScore, sentScore, compositeScore, cautionTag, staleCount } = getAssetScores(asset);
         const bias = getBiasMeta(compositeScore);
         const isSelected = asset.id === state.selectedAssetId;
 
@@ -1776,6 +1861,7 @@
                 ${bias.label}
               </span>
               ${cautionTag ? `<span class="inline-block px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${cautionTag.badgeClass}">${cautionTag.label}</span>` : ''}
+              ${staleCount > 0 && cautionTag && cautionTag.type !== 'stale' ? `<span class="text-[9px] font-mono text-amber-300">${staleCount} stale input${staleCount > 1 ? 's' : ''} scored 0</span>` : ''}
             </div>
           </td>
           <td class="py-3 px-4 hidden md:table-cell text-[11px] font-mono">
@@ -1881,6 +1967,7 @@
             <div class="flex items-center gap-1.5 min-w-0">
               <span class="font-medium text-gray-200 truncate">${f.label}</span>
               ${f.autoLocked ? `<span class="px-1.5 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 text-[9px] font-mono text-blue-300 shrink-0">${f.sourceTag}</span>` : ''}
+              ${((state.staleSlots || {})[state.selectedAssetId] || []).includes(f.key) ? `<span class="px-1.5 py-0.2 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300 shrink-0">STALE INPUT &rarr; 0</span>` : ''}
             </div>
             <span class="font-mono font-bold tabular-nums ${valColor} shrink-0">${formatSignedScore(val)}</span>
           </div>
@@ -1949,7 +2036,9 @@
               <span class="text-2xl font-bold font-mono ${stats.overallHitRate >= 60 ? 'text-emerald-400' : 'text-amber-300'}">${stats.overallHitRate.toFixed(1)}%</span>
               <span class="text-xs font-mono text-gray-400">${stats.totalDirectional} directional calls</span>
             </div>
-            <div class="mt-1 text-[11px] text-gray-500 font-mono">Scores &ge; +0.8 or &le; -0.8</div>
+            <div class="mt-1 text-[11px] text-gray-500 font-mono">Scores &ge; +${NO_TRADE_BAND.toFixed(1)} or &le; -${NO_TRADE_BAND.toFixed(1)} &bull; ~${stats.nEff} independent obs</div>
+            <div class="mt-0.5 text-[11px] font-mono ${stats.edgePts > 0 ? 'text-emerald-300' : 'text-rose-300'}">Always-long baseline ${stats.baselineLongRate.toFixed(0)}% &rarr; edge ${stats.edgePts >= 0 ? '+' : ''}${stats.edgePts.toFixed(0)} pts</div>
+            <div class="mt-0.5 text-[10px] font-mono text-gray-500">Long calls ${stats.longHitRate === null ? 'n/a' : stats.longHitRate.toFixed(0) + '%'} (${stats.longN}) &bull; Short calls ${stats.shortHitRate === null ? 'n/a' : stats.shortHitRate.toFixed(0) + '%'} (${stats.shortN})</div>
           </div>
 
           <div class="bg-terminal-card border border-terminal-border rounded-xl p-3.5">
@@ -2202,24 +2291,47 @@
       if (!d) { if (pill) pill.textContent = 'AUTO-DATA: none (manual mode)'; return; }
       const T = todayKey(), need = [];
       const m = d.macro || {};
+      const ageDays = (iso) => { const t = Date.parse(String(iso).slice(0, 10) + 'T00:00:00Z'); return isNaN(t) ? null : (Date.now() - t) / 86400000; };
+      const isOld = (obj, maxDays) => { const a = obj && obj.asOf ? ageDays(obj.asOf) : null; return a === null || a > maxDays; };  // no date = unknown age = treat as stale
+      const si = state.staleInputs = {};
+
       ['us10y', 'vix', 'dxy'].forEach(k => { if (m[k]) Object.assign(state.macro[k], { val: m[k].val, mu: m[k].mu, sd: m[k].sd }); });
+      ['vix3m', 'usdjpy', 'eurusd'].forEach(k => {
+        if (m[k] && m[k].val != null) state.macro[k] = { val: m[k].val, mu: m[k].mu, sd: m[k].sd, asOf: m[k].asOf };
+        si[k] = !m[k] || isOld(m[k], 4);
+      });
       if (m.us2y) state.macro.us2y.val = m.us2y.val;
       if (m.real10y) state.macro.real10y = m.real10y;
       if (m.be10) state.macro.be10 = m.be10;
+      if (m.hyOAS) state.macro.hyOAS = m.hyOAS;
+      si.real10y = !m.real10y || isOld(m.real10y, 7);   // FRED daily series: stale after 7 days
+      si.hyOAS = !m.hyOAS || isOld(m.hyOAS, 7);
+
       Object.entries(d.prices || {}).forEach(([id, p]) => { const a = state.assets[id]; if (a && p) Object.assign(a, { price: p.price, prevClose: p.prevClose, changePct: p.changePct, sma50: p.sma50, sma200: p.sma200, source: 'data.json' }); });
-      Object.entries(d.cot || {}).forEach(([id, c]) => { const a = state.assets[id]; if (a && c && a.cot.manualDate !== T) { a.cot.longPct = c.longPct; a.cot.weeklyChangePct = c.weeklyChangePct; } });
+      Object.entries(d.cot || {}).forEach(([id, c]) => {
+        const a = state.assets[id]; if (!a || !c) return;
+        const manual = a.cot.manualDate === T;
+        if (!manual) { Object.assign(a.cot, { longPct: c.longPct, weeklyChangePct: c.weeklyChangePct, cotIndex: c.cotIndex, cotWeeks: c.cotWeeks, reportDate: c.reportDate }); }
+        const ad = c.reportDate ? ageDays(c.reportDate) : null;
+        si['cot_' + id] = !manual && ad !== null && ad > 12;   // weekly report: >12 days old means a release was missed
+      });
       Object.entries(d.indicators || {}).forEach(([id, v]) => {
         const i = state.indicators.find(x => x.id === id); if (!i) return;
         if (i.manualDate !== T) { if (v.actual != null) i.actual = v.actual; if (v.expected != null) i.expected = v.expected; if (v.releaseDate) i.releaseDate = v.releaseDate; }
         if (v.needsConsensus) need.push(i.name);
       });
+      // An indicator with no fresh auto "actual" (FRED failed) and nothing typed today is scored 0, not from a hardcoded default
+      state.indicators.forEach(i => { const v = (d.indicators || {})[i.id]; i.autoStale = !(v && v.actual != null) && i.manualDate !== T; });
+
       if (d.fearGreed && state.fgManualDate !== T) state.fearGreedIndex = clamp(Math.round(d.fearGreed.value), 0, 100);
+      state.fgReliable = !d.fearGreed || d.fearGreed.source === 'cnn' || state.fgManualDate === T;
       state.autoUpdated = d.updated ? new Date(d.updated).getTime() : null;
       const age = state.autoUpdated ? (Date.now() - state.autoUpdated) / 3600000 : null;
       const failed = Object.entries(d.status || {}).filter(([, v]) => v !== 'ok').map(([k]) => k);
+      const staleList = [...Object.keys(si).filter(k => si[k]), ...state.indicators.filter(i => i.autoStale).map(i => i.id)];
       if (pill) {
-        const fresh = age !== null && age < 36 && !failed.length && !need.length;
-        pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${d.fearGreed && d.fearGreed.source !== 'cnn' ? ' | F&G=proxy' : ''}`;
+        const fresh = age !== null && age < 36 && !failed.length && !need.length && !staleList.length;
+        pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${staleList.length ? ' | STALE(scored 0): ' + staleList.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${!state.fgReliable ? ' | F&G=proxy(excluded)' : ''}`;
         pill.className = `ml-2 px-1.5 py-0.5 rounded border text-[10px] font-mono ${fresh ? 'border-emerald-500/40 text-emerald-300' : 'border-amber-500/40 text-amber-300'}`;
       }
       saveState();
