@@ -240,7 +240,7 @@
         </button>
 
         <!-- Force Sync Live Feeds Button -->
-        <button onclick="syncLiveMarketData(true)" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-medium transition-all active:scale-95" title="Fetch live market feeds">
+        <button onclick="loadAutoData().catch(() => {}).finally(() => syncLiveMarketData(true))" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-medium transition-all active:scale-95" title="Fetch live market feeds">
           <i id="sync-spinner" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
           <span>Sync</span>
         </button>
@@ -2748,7 +2748,8 @@
         state.countdown -= 1;
         if (state.countdown <= 0) {
           state.countdown = 300;
-          syncLiveMarketData(false);
+          // Re-read data.json first so a tab left open picks up new snapshots (it used to be read only once, at page load)
+          loadAutoData().catch(() => {}).finally(() => syncLiveMarketData(false));
         }
         const cdEl = document.getElementById('sync-countdown');
         if (cdEl) cdEl.textContent = `${state.countdown}s`;
