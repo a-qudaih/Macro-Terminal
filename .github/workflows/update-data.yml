@@ -1,7 +1,9 @@
 name: update-data
 on:
   schedule:
-    - cron: "30 22 * * 1-5"   # 22:30 UTC = 06:30 MYT, after the US close
+    - cron: "0 7 * * 1-5"      # 15:00 MYT, European morning
+    - cron: "30 14 * * 1-5"    # 22:30 MYT, US open
+    - cron: "30 22 * * 1-5"    # 06:30 MYT, after the US close
   workflow_dispatch:
 permissions:
   contents: write
