@@ -933,6 +933,8 @@
                 if (typeof savedInd.actual === 'number') target.actual = savedInd.actual;
                 if (typeof savedInd.expected === 'number') target.expected = savedInd.expected;
                 if (savedInd.manualDate) target.manualDate = savedInd.manualDate;
+                if (savedInd.actualDate) target.actualDate = savedInd.actualDate;
+                if (savedInd.expectedDate) target.expectedDate = savedInd.expectedDate;
               }
             });
           }
@@ -989,7 +991,7 @@
           fearGreedIndex: state.fearGreedIndex,
           fearGreedMode: state.fearGreedMode,
           fgManualDate: state.fgManualDate || null,
-          indicators: state.indicators.map(i => ({ id: i.id, actual: i.actual, expected: i.expected, manualDate: i.manualDate || null })),
+          indicators: state.indicators.map(i => ({ id: i.id, actual: i.actual, expected: i.expected, manualDate: i.manualDate || null, actualDate: i.actualDate || null, expectedDate: i.expectedDate || null })),
           betaWeights: state.betaWeights,
           assets: Object.fromEntries(
             Object.entries(state.assets).map(([k, v]) => [k, {
@@ -1034,7 +1036,8 @@
         // Strict 'Mon DD' check: V8 happily parses junk like '— 2026' as Jan 1, which would make a typed value look 300+ days old
         const relOk = /^[A-Za-z]{3}\s+\d{1,2}$/.test(String(ind.releaseDate || '').trim());
         let rel = relOk ? new Date(`${ind.releaseDate} ${new Date().getFullYear()}`) : new Date(NaN);
-        if (isNaN(rel) && ind.manualDate) rel = new Date(ind.manualDate + 'T00:00:00');   // typed by hand, release date unknown: decay from entry day
+        if (ind.actualDate) rel = new Date(ind.actualDate + 'T00:00:00');                  // actual typed by hand: decay from the day it was typed
+        if (isNaN(rel) && ind.manualDate) rel = new Date(ind.manualDate + 'T00:00:00');   // release date unknown: decay from entry day
         if (isNaN(rel)) rel = new Date();
         if (rel > new Date()) rel.setFullYear(rel.getFullYear() - 1);
         const ageDays = Math.max(0, (Date.now() - rel.getTime()) / 86400000);
@@ -1751,7 +1754,7 @@
         card.innerHTML = `
           <div class="flex items-start justify-between gap-1">
             <div>
-              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}${item.missing ? ' <span class="px-1 rounded bg-sky-500/15 border border-sky-500/40 text-[9px] font-mono text-sky-300">NEEDS INPUT</span>' : ''}</div>
+              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}${item.missing ? ' <span class="px-1 rounded bg-sky-500/15 border border-sky-500/40 text-[9px] font-mono text-sky-300">NEEDS INPUT</span>' : ''}${item.needsConsensus && !item.missing ? ` <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">NEW RELEASE: CHECK CONSENSUS</span> <button onclick="confirmConsensus('${item.id}')" class="px-1 rounded bg-emerald-500/15 border border-emerald-500/40 text-[9px] font-mono text-emerald-300 hover:bg-emerald-500/25">&#10003; still valid</button>` : ''}</div>
               <div class="text-[10px] font-mono text-gray-500 mt-0.5">${item.releaseDate} • ${item.note}</div>
             </div>
             <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${zColor} shrink-0">Z: ${formatSignedScore(item.zScore)}</span>
@@ -2303,6 +2306,19 @@
     // ===== AUTO DATA: data.json / data.js written daily by fetch_data.py =====
     const DATA_URL = './data.json'; // GitHub Pages: 'https://a-qudaih.github.io/Macro-Terminal/data.json'
     function todayKey() { return new Date().toISOString().slice(0, 10); }
+    function renderAutoPill() {
+      const pill = document.getElementById('auto-data-pill'); const meta = state.autoMeta;
+      if (!pill || !meta) return;
+      const { age, failed } = meta, si = state.staleInputs || {};
+      const hasVals = i => typeof i.actual === 'number' && typeof i.expected === 'number';
+      const staleList = [...Object.keys(si).filter(k => si[k]), ...state.indicators.filter(i => i.autoStale && hasVals(i)).map(i => i.id)];
+      const missingList = state.indicators.filter(i => !hasVals(i)).map(i => i.id);
+      const need = state.indicators.filter(i => i.needsConsensus && hasVals(i)).map(i => i.name);
+      const fresh = age !== null && age < 36 && !failed.length && !need.length && !staleList.length && !missingList.length;
+      pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${staleList.length ? ' | STALE(scored 0): ' + staleList.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${missingList.length ? ' | NEEDS INPUT: ' + missingList.join(',') : ''}${!state.fgReliable ? ' | F&G=proxy(excluded)' : ''}`;
+      pill.className = `ml-2 px-1.5 py-0.5 rounded border text-[10px] font-mono ${fresh ? 'border-emerald-500/40 text-emerald-300' : 'border-amber-500/40 text-amber-300'}`;
+    }
+
     async function loadAutoData() {
       let d = window.AUTO_DATA || null;
       try { const r = await fetch(DATA_URL + '?t=' + Date.now()); if (r.ok) d = await r.json(); } catch (_) {}
@@ -2341,25 +2357,23 @@
       });
       Object.entries(d.indicators || {}).forEach(([id, v]) => {
         const i = state.indicators.find(x => x.id === id); if (!i) return;
-        if (i.manualDate !== T) { if (v.actual != null) i.actual = v.actual; if (v.expected != null) i.expected = v.expected; if (v.releaseDate) i.releaseDate = v.releaseDate; }
-        if (v.needsConsensus) need.push(i.name);
+        // EXPECTED: a value typed on the page always wins over consensus.json. ACTUAL: a typed value wins only if it was typed
+        // on/after the release data.json knows about; a newer release replaces it (FRED / consensus.json are the source of truth).
+        const typedActual = !!i.actualDate && (!v.releaseISO || i.actualDate >= v.releaseISO);
+        if (v.actual != null && !typedActual) { i.actual = v.actual; i.actualDate = null; if (v.releaseDate) i.releaseDate = v.releaseDate; }
+        if (v.expected != null && !i.expectedDate) i.expected = v.expected;
+        // Consensus freshness: a release newer than your last consensus entry means the Expected value may belong to the previous release
+        i.needsConsensus = i.expectedDate ? !!(v.releaseISO && v.releaseISO > i.expectedDate) : !!v.needsConsensus;
       });
-      // An indicator with no fresh auto "actual" (FRED failed) and nothing typed today is scored 0, not from a hardcoded default
-      state.indicators.forEach(i => { const v = (d.indicators || {})[i.id]; i.autoStale = !(v && v.actual != null) && i.manualDate !== T; });
+      // An indicator with no fresh auto "actual" (FRED failed) and nothing typed by you is scored 0, not from a hardcoded default
+      state.indicators.forEach(i => { const v = (d.indicators || {})[i.id]; i.autoStale = !(v && v.actual != null) && !i.actualDate; });
 
       if (d.fearGreed && state.fgManualDate !== T) state.fearGreedIndex = clamp(Math.round(d.fearGreed.value), 0, 100);
       state.fgReliable = !d.fearGreed || d.fearGreed.source === 'cnn' || state.fgManualDate === T;
       state.autoUpdated = d.updated ? new Date(d.updated).getTime() : null;
       const age = state.autoUpdated ? (Date.now() - state.autoUpdated) / 3600000 : null;
-      const failed = Object.entries(d.status || {}).filter(([, v]) => v !== 'ok').map(([k]) => k);
-      const hasVals = i => typeof i.actual === 'number' && typeof i.expected === 'number';
-      const staleList = [...Object.keys(si).filter(k => si[k]), ...state.indicators.filter(i => i.autoStale && hasVals(i)).map(i => i.id)];
-      const missingList = state.indicators.filter(i => !hasVals(i)).map(i => i.id);
-      if (pill) {
-        const fresh = age !== null && age < 36 && !failed.length && !need.length && !staleList.length && !missingList.length;
-        pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${staleList.length ? ' | STALE(scored 0): ' + staleList.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${missingList.length ? ' | NEEDS INPUT: ' + missingList.join(',') : ''}${!state.fgReliable ? ' | F&G=proxy(excluded)' : ''}`;
-        pill.className = `ml-2 px-1.5 py-0.5 rounded border text-[10px] font-mono ${fresh ? 'border-emerald-500/40 text-emerald-300' : 'border-amber-500/40 text-amber-300'}`;
-      }
+      state.autoMeta = { age, failed: Object.entries(d.status || {}).filter(([, v]) => v !== 'ok').map(([k]) => k) };
+      renderAutoPill();
       saveState();
     }
 
@@ -2605,13 +2619,23 @@
       renderAll();
     }
 
+    // "The consensus I typed earlier is still the right one for this release": re-dates it so the warning clears
+    function confirmConsensus(id) {
+      const target = state.indicators.find(i => i.id === id);
+      if (!target) return;
+      target.expectedDate = todayKey(); target.needsConsensus = false;
+      renderAutoPill(); saveState(); renderAll();
+    }
     function updateEconomicInput(id, field, rawVal) {
       const target = state.indicators.find(i => i.id === id);
       const num = parseFloat(rawVal);
       if (!target || isNaN(num)) return;
       target[field] = num;
       target.manualDate = todayKey();
-      target.autoStale = false;   // a value typed today is fresh by definition
+      if (field === 'expected') { target.expectedDate = todayKey(); target.needsConsensus = false; }
+      if (field === 'actual') target.actualDate = todayKey();
+      target.autoStale = false;   // a value you typed is fresh by definition
+      renderAutoPill();
       applyQuantModel();
       saveState();
       renderAll();
