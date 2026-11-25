@@ -6,8 +6,24 @@
   *valid* rows. Every FRED series is isolated, so one failure no longer kills the rest, and `status.fred` names the series.
 - **index.html: hardcoded actuals.** When FRED failed, `rates/cpi/unemployment/gdp` silently used values typed into the
   HTML. They are now scored 0 and flagged STALE.
+- **Hardcoded daily changes.** 10Y bps / VIX % / DXY % stayed at defaults (+5.0 / +8.4 / +0.35) whenever the browser live feed
+  was down, and the +5.0 bps fed the Central Bank Policy score. Now taken from data.json.
+- **data.json read once.** The page only read data.json at load; an open tab never saw newer snapshots and the banner age
+  kept growing. Now re-read every 5 min and on the Sync button.
 - **Neutral band mismatch.** Label used +/-1.0, backtest used +/-0.8. One shared `NO_TRADE_BAND = 1.0`.
 - **Pillar attribution.** A pillar scoring exactly 0.0 was counted as a miss. Now excluded from that pillar's denominator.
+
+## Added: Nonfarm Payrolls, Retail Sales, ISM Services PMI
+- **NFP** (labor channel, with unemployment) and **Retail Sales MoM** (growth channel): actuals auto-fetched from FRED
+  (`PAYEMS` monthly change in thousands, `RSAFS` MoM %). **ISM Services**: actual + expected typed in consensus.json (not on FRED).
+  Expected values for all three are yours to supply (consensus.json or the card fields).
+- Channels are *averages*, so weights are unchanged: labor = avg(unemployment, NFP); growth = avg(GDP, ISM Mfg, ISM Services, Retail).
+  The earnings/cycle modifier uses the same growth channel.
+- Typical-surprise scales (starting values): NFP 80k, Retail 0.45 pts, ISM Services 1.8 pts.
+- An indicator with no values shows NEEDS INPUT, is excluded (not a hidden 0), and is listed in the banner.
+  Stale/missing indicators are now excluded from a channel's average instead of diluting it.
+- A value typed by hand with no known release date decays from the day you typed it.
+- Fixed while testing: typing a value into a card did not clear the stale flag; strict release-date parsing.
 
 ## Methodology
 1. Double counting: VIX *level* removed from `crossAssetVol` (it is already inside CNN Fear & Greed).

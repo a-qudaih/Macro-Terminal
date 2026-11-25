@@ -5,16 +5,21 @@
     "cpi": 3.7,
     "unemployment": 4.2,
     "gdp": 3.2,
-    "pmi": 54.5
+    "pmi": 54.5,
+    "nfp": null,
+    "retail": null,
+    "ismServices": null
   },
   "actual": {
-    "pmi": 55.5
+    "pmi": 55.5,
+    "ismServices": null
   },
   "releaseISO": {
     "rates": "2026-11-07",
     "cpi": "2026-11-10",
     "unemployment": "2026-11-06",
     "gdp": "2026-10-29",
-    "pmi": "2026-11-02"
+    "pmi": "2026-11-02",
+    "nfp": "2026-11-06"
   }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Daily data fetcher for the Macro Terminal. Python stdlib only.
-Env: FRED_API_KEY (free, fred.stlouisfed.org). Optional file: consensus.json (your expected values / PMI actual).
+Env: FRED_API_KEY (free, fred.stlouisfed.org). Optional file: consensus.json (your expected values; actuals FRED does not carry: ISM PMIs).
 Writes data.json (for GitHub Pages / http) and data.js (for opening the HTML straight from disk)."""
 import json, os, math, urllib.request, urllib.parse, datetime as dt
 
@@ -117,6 +117,8 @@ def main():
         part("rates", lambda: ind("rates", lambda: fred("DFEDTARU")[0][1]))
         part("unemployment", lambda: ind("unemployment", lambda: fred("UNRATE")[0][1]))
         part("gdp", lambda: ind("gdp", lambda: fred("A191RL1Q225SBEA")[0][1]))
+        part("nfp", lambda: ind("nfp", lambda: (lambda o: o[0][1] - o[1][1])(fred("PAYEMS", 2))))              # monthly change, thousands
+        part("retail", lambda: ind("retail", lambda: (lambda o: (o[0][1] / o[1][1] - 1) * 100)(fred("RSAFS", 2))))  # headline retail sales, MoM %
         part("cpi", lambda: ind("cpi", lambda: (lambda c: (c[0][1] / c[12][1] - 1) * 100)(fred("CPIAUCSL", 13))))
         if failed: raise RuntimeError(" | ".join(failed))
     run("fred", fred_block)

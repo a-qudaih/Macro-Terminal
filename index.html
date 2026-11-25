@@ -407,7 +407,7 @@
           </div>
         </div>
 
-        <div id="surprise-inputs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div id="surprise-inputs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <!-- Populated dynamically by renderSurpriseEngine() -->
         </div>
       </section>
@@ -669,7 +669,10 @@
       { id: 'cpi', name: 'US CPI YoY', actual: 3.80, expected: 3.70, stdDev: 0.20, unit: '%', releaseDate: 'Nov 10', note: 'Sticky core services inflation', isRateOrInflation: true, invertRawSurprise: false },
       { id: 'unemployment', name: 'Unemployment Rate', actual: 4.10, expected: 4.20, stdDev: 0.20, unit: '%', releaseDate: 'Nov 06', note: 'Tight labor / 165k NFP beat', isRateOrInflation: false, invertRawSurprise: true },
       { id: 'gdp', name: 'US GDP QoQ', actual: 3.40, expected: 3.20, stdDev: 0.40, unit: '%', releaseDate: 'Oct 29', note: 'Resilient consumer expansion', isRateOrInflation: false, invertRawSurprise: false },
-      { id: 'pmi', name: 'Mfg PMI (ISM)', actual: 55.5, expected: 54.5, stdDev: 1.50, unit: 'pts', releaseDate: 'Nov 02', note: 'Industrial new orders rebound', isRateOrInflation: false, invertRawSurprise: false }
+      { id: 'pmi', name: 'Mfg PMI (ISM)', actual: 55.5, expected: 54.5, stdDev: 1.50, unit: 'pts', releaseDate: 'Nov 02', note: 'Industrial new orders rebound', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'nfp', name: 'Nonfarm Payrolls', actual: null, expected: null, stdDev: 80, unit: 'k', releaseDate: '—', note: 'Monthly job change (thousands)', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'retail', name: 'Retail Sales MoM', actual: null, expected: null, stdDev: 0.45, unit: '%', releaseDate: '—', note: 'Headline consumer demand', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'ismServices', name: 'ISM Services PMI', actual: null, expected: null, stdDev: 1.80, unit: 'pts', releaseDate: '—', note: 'Services activity (manual entry)', isRateOrInflation: false, invertRawSurprise: false }
     ];
 
     // Asset-Specific Macro Sensitivity Weighting Matrix (Beta Multipliers)
@@ -1024,19 +1027,24 @@
 
     function computeIndicatorSurprises() {
       return state.indicators.map(ind => {
-        const rawDiff = ind.actual - ind.expected;
+        const have = typeof ind.actual === 'number' && typeof ind.expected === 'number' && !isNaN(ind.actual) && !isNaN(ind.expected);
+        const rawDiff = have ? ind.actual - ind.expected : 0;
         const directionalDiff = ind.invertRawSurprise ? -rawDiff : rawDiff;
         const rawZ = clamp(directionalDiff / ind.stdDev, -1.0, 1.0);
-        let rel = new Date(`${ind.releaseDate} ${new Date().getFullYear()}`);
+        // Strict 'Mon DD' check: V8 happily parses junk like '— 2026' as Jan 1, which would make a typed value look 300+ days old
+        const relOk = /^[A-Za-z]{3}\s+\d{1,2}$/.test(String(ind.releaseDate || '').trim());
+        let rel = relOk ? new Date(`${ind.releaseDate} ${new Date().getFullYear()}`) : new Date(NaN);
+        if (isNaN(rel) && ind.manualDate) rel = new Date(ind.manualDate + 'T00:00:00');   // typed by hand, release date unknown: decay from entry day
         if (isNaN(rel)) rel = new Date();
         if (rel > new Date()) rel.setFullYear(rel.getFullYear() - 1);
         const ageDays = Math.max(0, (Date.now() - rel.getTime()) / 86400000);
         const decay = Math.exp(-ageDays / 21);
-        const stale = !!ind.autoStale;               // no fresh auto value (e.g. FRED failed) and not typed in today
-        const zScore = stale ? 0 : rawZ * decay;
+        const stale = !!ind.autoStale && have;       // had values, but no fresh auto value (e.g. FRED failed) and not typed in today
+        const zScore = (stale || !have) ? 0 : rawZ * decay;
         return {
           ...ind,
           stale,
+          missing: !have,
           rawDiff,
           ageDays: Math.round(ageDays),
           decay,
@@ -1097,12 +1105,21 @@
     }
 
     // Always sync the 2 auto-derived slots (Economic Surprise & Fear/Greed) so they stay non-redundant
+    // Each channel is the AVERAGE of its live indicators, so adding indicators never makes a channel count for more.
+    // Missing (no values yet) and stale indicators are excluded from the average instead of diluting it with a hidden 0.
+    function surpriseChannels(surprises) {
+      const live = surprises.filter(s => !s.missing && !s.stale);
+      const avg = (ids) => { const f = live.filter(s => ids.includes(s.id)); return f.length ? f.reduce((a, s) => a + s.zScore, 0) / f.length : 0; };
+      return { labor: avg(['unemployment', 'nfp']), growth: avg(['gdp', 'pmi', 'ismServices', 'retail']) };
+    }
+
     function syncAutoDerivedSlots() {
       const surprises = computeIndicatorSurprises();
       const sMap = Object.fromEntries(surprises.map(s => [s.id, s.zScore]));
       const sStale = Object.fromEntries(surprises.map(s => [s.id, !!s.stale]));
       const fgSignals = computeFearGreedSignals();
       const growthRegimeSign = state.macroRegime === 'inflation' ? -0.45 : 0.85;
+      const ch = surpriseChannels(surprises);
       state.staleSlots = {};
 
       Object.values(state.assets).forEach(asset => {
@@ -1111,11 +1128,11 @@
         const slots = (state.staleSlots[asset.id] = []);
 
         const cpiTerm = (-sMap.cpi) * b.cpi;
-        const laborTerm = (sMap.unemployment * growthRegimeSign) * b.labor;
-        const growthTerm = (((sMap.gdp + sMap.pmi) / 2) * growthRegimeSign) * b.growth;
+        const laborTerm = (ch.labor * growthRegimeSign) * b.labor;
+        const growthTerm = (ch.growth * growthRegimeSign) * b.growth;
         const aggSurprise = (cpiTerm + laborTerm + growthTerm) / 3.0;
         asset.fundamental.economicSurprise = round1(clamp(aggSurprise, -1.0, 1.0));
-        if (['cpi', 'unemployment', 'gdp', 'pmi'].some(id => sStale[id])) slots.push('economicSurprise');
+        if (['cpi', 'unemployment', 'gdp', 'pmi', 'nfp', 'retail', 'ismServices'].some(id => sStale[id])) slots.push('economicSurprise');
         if (sStale.rates) slots.push('monetaryPolicy');
 
         // Fear & Greed. Contrarian fade of an EXTREME (<=20 / >=80) is halved when price trend disagrees with it
@@ -1138,6 +1155,7 @@
 
       const surprises = computeIndicatorSurprises();
       const sMap = Object.fromEntries(surprises.map(s => [s.id, s.zScore]));
+      const chGrowth = surpriseChannels(surprises).growth;
 
       const us10y = state.macro.us10y.val;
       const vix = state.macro.vix.val;
@@ -1171,7 +1189,7 @@
 
         // Earnings / Structural Demand
         const baseStruct = DEFAULT_ASSETS[asset.id].fundamental.earningsDemand;
-        const cycleMod = ((sMap.gdp + sMap.pmi) / 2) * (isGold ? -0.15 : 0.25);
+        const cycleMod = chGrowth * (isGold ? -0.15 : 0.25);
         asset.fundamental.earningsDemand = round1(clamp(baseStruct + cycleMod, -1.0, 1.0));
 
         // Currency & FX Impulse
@@ -1724,7 +1742,8 @@
       surprises.forEach(item => {
         const diff = item.rawDiff;
         const diffSign = diff > 0 ? '+' : '';
-        const diffFormatted = `${diffSign}${diff.toFixed(item.unit === 'pts' ? 1 : 2)}${item.unit === 'pts' ? '' : item.unit}`;
+        const dec = item.unit === 'k' ? 0 : item.unit === 'pts' ? 1 : 2;
+        const diffFormatted = item.missing ? '—' : `${diffSign}${diff.toFixed(dec)}${item.unit === 'pts' ? '' : item.unit}`;
         const zColor = item.zScore > 0 ? 'text-blue-300 bg-blue-500/15 border-blue-500/30' : item.zScore < 0 ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' : 'text-gray-400 bg-gray-800 border-gray-700';
 
         const card = document.createElement('div');
@@ -1732,7 +1751,7 @@
         card.innerHTML = `
           <div class="flex items-start justify-between gap-1">
             <div>
-              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}</div>
+              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}${item.missing ? ' <span class="px-1 rounded bg-sky-500/15 border border-sky-500/40 text-[9px] font-mono text-sky-300">NEEDS INPUT</span>' : ''}</div>
               <div class="text-[10px] font-mono text-gray-500 mt-0.5">${item.releaseDate} • ${item.note}</div>
             </div>
             <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${zColor} shrink-0">Z: ${formatSignedScore(item.zScore)}</span>
@@ -1741,11 +1760,11 @@
           <div class="grid grid-cols-2 gap-1.5 text-[11px] font-mono mt-1">
             <label class="bg-gray-900 border border-gray-800 rounded px-2 py-1 flex flex-col">
               <span class="text-[9px] text-gray-500 uppercase">Actual (${item.unit})</span>
-              <input type="number" step="0.05" value="${item.actual}" onchange="updateEconomicInput('${item.id}', 'actual', this.value)" class="bg-transparent text-white font-bold focus:outline-none focus:text-emerald-300 w-full mt-0.5" />
+              <input type="number" step="${item.unit === 'k' ? 1 : 0.05}" placeholder="enter" value="${item.actual ?? ''}" onchange="updateEconomicInput('${item.id}', 'actual', this.value)" class="bg-transparent text-white font-bold focus:outline-none focus:text-emerald-300 w-full mt-0.5" />
             </label>
             <label class="bg-gray-900 border border-gray-800 rounded px-2 py-1 flex flex-col">
               <span class="text-[9px] text-gray-500 uppercase">Expected</span>
-              <input type="number" step="0.05" value="${item.expected}" onchange="updateEconomicInput('${item.id}', 'expected', this.value)" class="bg-transparent text-gray-300 font-semibold focus:outline-none focus:text-blue-300 w-full mt-0.5" />
+              <input type="number" step="${item.unit === 'k' ? 1 : 0.05}" placeholder="enter" value="${item.expected ?? ''}" onchange="updateEconomicInput('${item.id}', 'expected', this.value)" class="bg-transparent text-gray-300 font-semibold focus:outline-none focus:text-blue-300 w-full mt-0.5" />
             </label>
           </div>
 
@@ -2333,10 +2352,12 @@
       state.autoUpdated = d.updated ? new Date(d.updated).getTime() : null;
       const age = state.autoUpdated ? (Date.now() - state.autoUpdated) / 3600000 : null;
       const failed = Object.entries(d.status || {}).filter(([, v]) => v !== 'ok').map(([k]) => k);
-      const staleList = [...Object.keys(si).filter(k => si[k]), ...state.indicators.filter(i => i.autoStale).map(i => i.id)];
+      const hasVals = i => typeof i.actual === 'number' && typeof i.expected === 'number';
+      const staleList = [...Object.keys(si).filter(k => si[k]), ...state.indicators.filter(i => i.autoStale && hasVals(i)).map(i => i.id)];
+      const missingList = state.indicators.filter(i => !hasVals(i)).map(i => i.id);
       if (pill) {
-        const fresh = age !== null && age < 36 && !failed.length && !need.length && !staleList.length;
-        pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${staleList.length ? ' | STALE(scored 0): ' + staleList.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${!state.fgReliable ? ' | F&G=proxy(excluded)' : ''}`;
+        const fresh = age !== null && age < 36 && !failed.length && !need.length && !staleList.length && !missingList.length;
+        pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${staleList.length ? ' | STALE(scored 0): ' + staleList.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${missingList.length ? ' | NEEDS INPUT: ' + missingList.join(',') : ''}${!state.fgReliable ? ' | F&G=proxy(excluded)' : ''}`;
         pill.className = `ml-2 px-1.5 py-0.5 rounded border text-[10px] font-mono ${fresh ? 'border-emerald-500/40 text-emerald-300' : 'border-amber-500/40 text-amber-300'}`;
       }
       saveState();
@@ -2590,6 +2611,7 @@
       if (!target || isNaN(num)) return;
       target[field] = num;
       target.manualDate = todayKey();
+      target.autoStale = false;   // a value typed today is fresh by definition
       applyQuantModel();
       saveState();
       renderAll();
@@ -2688,7 +2710,7 @@
       let md = `### Macro & Sentiment Scorecard (${nowStr})\n`;
       md += `- **Macro Anchors:** US 10Y: \`${state.macro.us10y.val.toFixed(2)}%\` | US 2Y: \`${state.macro.us2y.val.toFixed(2)}%\` | VIX: \`${state.macro.vix.val.toFixed(2)}\` | DXY: \`${state.macro.dxy.val.toFixed(2)}\`\n`;
       md += `- **Regime & Sentiment:** \`${state.macroRegime === 'inflation' ? 'Inflation Focus (Good = Bad)' : 'Growth Focus (Good = Good)'}\` | CNN Fear & Greed: \`${fgSignals.fg}/100 (${fgSignals.zone})\` (${state.fearGreedMode.toUpperCase()})\n`;
-      md += `- **Economic Surprises:** ${surprises.map(s => `${s.name}: \`${s.actual}${s.unit}\` vs \`${s.expected}${s.unit}\` (Z:${formatSignedScore(s.zScore)})`).join(' | ')}\n\n`;
+      md += `- **Economic Surprises:** ${surprises.filter(s => !s.missing).map(s => `${s.name}: \`${s.actual}${s.unit}\` vs \`${s.expected}${s.unit}\` (Z:${formatSignedScore(s.zScore)})`).join(' | ')}\n\n`;
       md += `| Asset | Spot Price | Fundamental | Sentiment | Composite | Overall Bias | COT Long (Wk Chg) | Alerts |\n`;
       md += `| :--- | :---: | :---: | :---: | :---: | :--- | :---: | :--- |\n`;
 
