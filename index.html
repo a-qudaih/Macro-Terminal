@@ -1438,7 +1438,8 @@
       }
 
       const snapAge = state.autoUpdated ? (Date.now() - state.autoUpdated) / 3600000 : null;
-      const snapOk = snapAge !== null && snapAge < 36;
+      const snapCurrent = snapshotIsCurrent(state.autoUpdated);   // is this the latest scheduled snapshot? (weekend-aware)
+      const snapOk = snapAge !== null && (snapAge < 36 || snapCurrent);
       const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const dateShort = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
       if (liveSuccessCount > 0) {
@@ -1446,8 +1447,14 @@
         statusPulse.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
         statusText.className = 'text-gray-200 text-[11px]';
       } else {
-        if (snapOk) {
-          statusText.textContent = `SNAPSHOT data.json (${snapAge.toFixed(0)}h old) • live feed down`;
+        if (snapOk && snapCurrent) {
+          // Normal operating mode: scores run on the scheduled daily snapshot. Not an error, so no warning colour.
+          statusText.textContent = `DAILY SNAPSHOT • data.json ${snapAge.toFixed(0)}h old (latest scheduled run)`;
+          statusText.className = 'text-gray-300 text-[11px]';
+          statusPulse.className = 'w-2 h-2 rounded-full bg-sky-400';
+          statusText.title = 'Browser live prices are unavailable (free CORS proxy blocked), so scores use the scheduled data.json refresh.';
+        } else if (snapOk) {
+          statusText.textContent = `SNAPSHOT OVERDUE • data.json ${snapAge.toFixed(0)}h old • a scheduled refresh did not land`;
           statusText.className = 'text-amber-300 text-[11px]';
           statusPulse.className = 'w-2 h-2 rounded-full bg-amber-400';
         } else {
@@ -2306,6 +2313,21 @@
     // ===== AUTO DATA: data.json / data.js written daily by fetch_data.py =====
     const DATA_URL = './data.json'; // GitHub Pages: 'https://a-qudaih.github.io/Macro-Terminal/data.json'
     function todayKey() { return new Date().toISOString().slice(0, 10); }
+    // Must match your workflow's cron (update-data.yml: "30 22 * * 1-5" = Mon-Fri 22:30 UTC). Change these if you change the schedule.
+    const SCHEDULE_UTC_HOUR = 22, SCHEDULE_UTC_MIN = 30, SCHEDULE_GRACE_MIN = 60;
+    // Latest scheduled run at or before time t (weekends have no run, so Fri's run is the latest all weekend)
+    function lastScheduledRun(t) {
+      const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), SCHEDULE_UTC_HOUR, SCHEDULE_UTC_MIN));
+      if (d > t) d.setUTCDate(d.getUTCDate() - 1);
+      while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+      return d;
+    }
+    // True if data.json is from the latest run that should already exist (with a grace period for GitHub's scheduling delays)
+    function snapshotIsCurrent(updatedMs, now = new Date()) {
+      if (!updatedMs) return false;
+      return updatedMs >= lastScheduledRun(new Date(now.getTime() - SCHEDULE_GRACE_MIN * 60000)).getTime();
+    }
+
     function renderAutoPill() {
       const pill = document.getElementById('auto-data-pill'); const meta = state.autoMeta;
       if (!pill || !meta) return;
@@ -2314,7 +2336,7 @@
       const staleList = [...Object.keys(si).filter(k => si[k]), ...state.indicators.filter(i => i.autoStale && hasVals(i)).map(i => i.id)];
       const missingList = state.indicators.filter(i => !hasVals(i)).map(i => i.id);
       const need = state.indicators.filter(i => i.needsConsensus && hasVals(i)).map(i => i.name);
-      const fresh = age !== null && age < 36 && !failed.length && !need.length && !staleList.length && !missingList.length;
+      const fresh = age !== null && (age < 36 || snapshotIsCurrent(state.autoUpdated)) && !failed.length && !need.length && !staleList.length && !missingList.length;
       pill.textContent = `AUTO-DATA ${age === null ? '?' : age.toFixed(0) + 'h old'}${failed.length ? ' | FAILED: ' + failed.join(',') : ''}${staleList.length ? ' | STALE(scored 0): ' + staleList.join(',') : ''}${need.length ? ' | UPDATE CONSENSUS: ' + need.join(',') : ''}${missingList.length ? ' | NEEDS INPUT: ' + missingList.join(',') : ''}${!state.fgReliable ? ' | F&G=proxy(excluded)' : ''}`;
       pill.className = `ml-2 px-1.5 py-0.5 rounded border text-[10px] font-mono ${fresh ? 'border-emerald-500/40 text-emerald-300' : 'border-amber-500/40 text-amber-300'}`;
     }
