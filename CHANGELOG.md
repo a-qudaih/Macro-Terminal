@@ -50,6 +50,19 @@
   Explanations are written by the scoring code itself as it calculates, so they always match the number.
 - Disclosed by this view: the Earnings/Structural slot is mostly a fixed number in the code, and Seasonality is a fixed table.
 
+## Economic engine organized into Growth / Inflation / Labor; added PPI, Core PCE, weekly jobless claims
+- The engine is now three sections. Each shows its indicators, how many are live, the selected asset's sensitivity, and the **channel Z**
+  (the average of the live indicators in that section, which is what feeds the Economic Surprise slot), plus one line on how it is read in the current regime.
+  - **Growth:** GDP, ISM Manufacturing, ISM Services, Retail Sales
+  - **Inflation:** CPI, **PPI**, **Core PCE** (and the Fed Target Rate card, which feeds the Central Bank slot, not this one)
+  - **Labor:** Unemployment, Nonfarm Payrolls, **Initial Jobless Claims**
+- Inflation was a single input (CPI); it is now the average of CPI, PPI and core PCE, like the other channels, so weights are unchanged.
+- **Claims:** higher than expected = weaker labor (inverted); fades over 7 days instead of 21 (weekly release). If no consensus is entered, the
+  **average of the previous 4 weeks** stands in for it (labelled "Expected (4-wk avg)"); type a value to replace it, clear the box to return to it.
+- FRED series: `PPIFIS` (PPI final demand YoY), `PCEPILFE` (CORE PCE YoY; use `PCEPI` in fetch_data.py for headline), `ICSA` (claims, in thousands).
+- Clearing an Actual/Expected box now removes your typed value so the file / automatic baseline applies again.
+- Regression-tested: with no data for the new indicators every score is identical to the previous version.
+
 ## Methodology
 1. Double counting: VIX *level* removed from `crossAssetVol` (it is already inside CNN Fear & Greed).
    Replaced by VIX/VIX3M term structure + high-yield OAS (FRED BAMLH0A0HYM2).

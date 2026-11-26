@@ -407,7 +407,7 @@
           </div>
         </div>
 
-        <div id="surprise-inputs-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div id="surprise-inputs-grid" class="space-y-5">
           <!-- Populated dynamically by renderSurpriseEngine() -->
         </div>
       </section>
@@ -671,14 +671,17 @@
 
     // Actual vs. Consensus Economic Releases (Late Nov 2026 Calibration)
     const ECONOMIC_INDICATORS = [
-      { id: 'rates', name: 'Fed Target Rate', actual: 4.50, expected: 4.25, stdDev: 0.25, unit: '%', releaseDate: 'Nov 07', note: 'Hawkish hold / Dec hike risk', isRateOrInflation: true, invertRawSurprise: false },
-      { id: 'cpi', name: 'US CPI YoY', actual: 3.80, expected: 3.70, stdDev: 0.20, unit: '%', releaseDate: 'Nov 10', note: 'Sticky core services inflation', isRateOrInflation: true, invertRawSurprise: false },
-      { id: 'unemployment', name: 'Unemployment Rate', actual: 4.10, expected: 4.20, stdDev: 0.20, unit: '%', releaseDate: 'Nov 06', note: 'Tight labor / 165k NFP beat', isRateOrInflation: false, invertRawSurprise: true },
-      { id: 'gdp', name: 'US GDP QoQ', actual: 3.40, expected: 3.20, stdDev: 0.40, unit: '%', releaseDate: 'Oct 29', note: 'Resilient consumer expansion', isRateOrInflation: false, invertRawSurprise: false },
-      { id: 'pmi', name: 'Mfg PMI (ISM)', actual: 55.5, expected: 54.5, stdDev: 1.50, unit: 'pts', releaseDate: 'Nov 02', note: 'Industrial new orders rebound', isRateOrInflation: false, invertRawSurprise: false },
-      { id: 'nfp', name: 'Nonfarm Payrolls', actual: null, expected: null, stdDev: 80, unit: 'k', releaseDate: '—', note: 'Monthly job change (thousands)', isRateOrInflation: false, invertRawSurprise: false },
-      { id: 'retail', name: 'Retail Sales MoM', actual: null, expected: null, stdDev: 0.45, unit: '%', releaseDate: '—', note: 'Headline consumer demand', isRateOrInflation: false, invertRawSurprise: false },
-      { id: 'ismServices', name: 'ISM Services PMI', actual: null, expected: null, stdDev: 1.80, unit: 'pts', releaseDate: '—', note: 'Services activity (manual entry)', isRateOrInflation: false, invertRawSurprise: false }
+      { id: 'rates', group: 'inflation', policyOnly: true, name: 'Fed Target Rate', actual: 4.50, expected: 4.25, stdDev: 0.25, unit: '%', releaseDate: 'Nov 07', note: 'Hawkish hold / Dec hike risk', isRateOrInflation: true, invertRawSurprise: false },
+      { id: 'cpi', group: 'inflation', name: 'US CPI YoY', actual: 3.80, expected: 3.70, stdDev: 0.20, unit: '%', releaseDate: 'Nov 10', note: 'Sticky core services inflation', isRateOrInflation: true, invertRawSurprise: false },
+      { id: 'unemployment', group: 'labor', name: 'Unemployment Rate', actual: 4.10, expected: 4.20, stdDev: 0.20, unit: '%', releaseDate: 'Nov 06', note: 'Tight labor / 165k NFP beat', isRateOrInflation: false, invertRawSurprise: true },
+      { id: 'gdp', group: 'growth', name: 'US GDP QoQ', actual: 3.40, expected: 3.20, stdDev: 0.40, unit: '%', releaseDate: 'Oct 29', note: 'Resilient consumer expansion', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'pmi', group: 'growth', name: 'Mfg PMI (ISM)', actual: 55.5, expected: 54.5, stdDev: 1.50, unit: 'pts', releaseDate: 'Nov 02', note: 'Industrial new orders rebound', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'nfp', group: 'labor', name: 'Nonfarm Payrolls', actual: null, expected: null, stdDev: 80, unit: 'k', releaseDate: '—', note: 'Monthly job change (thousands)', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'retail', group: 'growth', name: 'Retail Sales MoM', actual: null, expected: null, stdDev: 0.45, unit: '%', releaseDate: '—', note: 'Headline consumer demand', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'ismServices', group: 'growth', name: 'ISM Services PMI', actual: null, expected: null, stdDev: 1.80, unit: 'pts', releaseDate: '—', note: 'Services activity (manual entry)', isRateOrInflation: false, invertRawSurprise: false },
+      { id: 'ppi', group: 'inflation', name: 'PPI YoY', actual: null, expected: null, stdDev: 0.35, unit: '%', releaseDate: '—', note: 'Producer prices, final demand', isRateOrInflation: true, invertRawSurprise: false },
+      { id: 'pce', group: 'inflation', name: 'Core PCE YoY', actual: null, expected: null, stdDev: 0.12, unit: '%', releaseDate: '—', note: "The Fed's preferred inflation gauge", isRateOrInflation: true, invertRawSurprise: false },
+      { id: 'claims', group: 'labor', name: 'Initial Jobless Claims', actual: null, expected: null, stdDev: 10, unit: 'k', decayDays: 7, releaseDate: '—', note: 'Weekly layoffs (released Thursdays)', isRateOrInflation: false, invertRawSurprise: true }
     ];
 
     // Asset-Specific Macro Sensitivity Weighting Matrix (Beta Multipliers)
@@ -1049,7 +1052,7 @@
         if (isNaN(rel)) rel = new Date();
         if (rel > new Date()) rel.setFullYear(rel.getFullYear() - 1);
         const ageDays = Math.max(0, (Date.now() - rel.getTime()) / 86400000);
-        const decay = Math.exp(-ageDays / 21);
+        const decay = Math.exp(-ageDays / (ind.decayDays || 21));   // monthly releases fade over ~3 weeks; weekly claims over ~1
         const stale = !!ind.autoStale && have;       // had values, but no fresh auto value (e.g. FRED failed) and not typed in today
         const zScore = (stale || !have) ? 0 : rawZ * decay;
         return {
@@ -1124,7 +1127,7 @@
     function setExplain(assetId, key, rec) { EXPLAIN[assetId + '.' + key] = rec; }
     // kind: live = recalculated from data | mixed = live data + a fixed number in the code | static = fixed table in the code
     const FACTOR_INFO = {
-      economicSurprise: { kind: 'live', what: 'How far the latest releases beat or missed consensus, as Z-scores, routed through this asset\'s sensitivity to CPI, labor and growth. The regime toggle decides whether strong data is good or bad.', bull: 'Releases that help this asset in the current regime (cooler CPI; in a Growth regime, stronger jobs and growth).', bear: 'Hot inflation surprise; in an Inflation regime, strong jobs/growth that raise rate-hike risk.' },
+      economicSurprise: { kind: 'live', what: 'How far the latest releases beat or missed consensus, as Z-scores, grouped into three channels (Growth, Inflation, Labor) and routed through this asset\'s sensitivity to each. The regime toggle decides whether strong growth and labor data is good or bad.', bull: 'Releases that help this asset in the current regime (cooler CPI; in a Growth regime, stronger jobs and growth).', bear: 'Hot inflation surprise; in an Inflation regime, strong jobs/growth that raise rate-hike risk.' },
       monetaryPolicy: { kind: 'live', what: 'Central-bank path: the Fed rate surprise plus the latest daily move in the 10Y yield (momentum), scaled by this asset\'s rate beta.', bull: 'Dovish surprise and falling yields.', bear: 'Hawkish surprise and rising yields.' },
       realYields: { kind: 'live', what: 'The LEVEL of the 10Y TIPS real yield against its own recent range. High real yields compete with long-duration assets and with gold.', bull: 'Real yields low or falling versus their range.', bear: 'Real yields high versus their range.' },
       earningsDemand: { kind: 'mixed', what: 'A fixed structural score for the asset (a number set in the code, NOT live data) plus a small modifier from the growth surprise channel. For gold it stands in for central-bank buying.', bull: 'Strong growth surprises lift equities (and slightly lower gold).', bear: 'Weak growth surprises hurt equities (and slightly help gold).' },
@@ -1141,7 +1144,7 @@
     function surpriseChannels(surprises) {
       const live = surprises.filter(s => !s.missing && !s.stale);
       const avg = (ids) => { const f = live.filter(s => ids.includes(s.id)); return f.length ? f.reduce((a, s) => a + s.zScore, 0) / f.length : 0; };
-      return { labor: avg(['unemployment', 'nfp']), growth: avg(['gdp', 'pmi', 'ismServices', 'retail']) };
+      return { labor: avg(['unemployment', 'nfp', 'claims']), growth: avg(['gdp', 'pmi', 'ismServices', 'retail']), inflation: avg(['cpi', 'ppi', 'pce']) };
     }
 
     function syncAutoDerivedSlots() {
@@ -1158,7 +1161,7 @@
         const isGold = asset.id === 'XAUUSD';
         const slots = (state.staleSlots[asset.id] = []);
 
-        const cpiTerm = (-sMap.cpi) * b.cpi;
+        const cpiTerm = (-ch.inflation) * b.cpi;      // inflation channel = average of CPI, PPI, core PCE
         const laborTerm = (ch.labor * growthRegimeSign) * b.labor;
         const growthTerm = (ch.growth * growthRegimeSign) * b.growth;
         const aggSurprise = (cpiTerm + laborTerm + growthTerm) / 3.0;
@@ -1167,16 +1170,16 @@
           value: asset.fundamental.economicSurprise, src: 'Auto: actual vs consensus engine',
           inputs: [
             ['Regime', state.macroRegime === 'inflation' ? 'Inflation (good data = bad for risk)' : 'Growth (good data = good for risk)'],
-            ['CPI surprise Z', fx2(sMap.cpi, 1)],
-            ['Labor channel Z (unemployment, NFP)', fx2(ch.labor)],
+            ['Inflation channel Z (CPI, PPI, core PCE)', fx2(ch.inflation)],
+            ['Labor channel Z (unemployment, NFP, claims)', fx2(ch.labor)],
             ['Growth channel Z (GDP, ISM mfg, ISM services, retail)', fx2(ch.growth)],
-            ['Sensitivity (beta) CPI / labor / growth', `${b.cpi} / ${b.labor} / ${b.growth}`],
-            ['Terms CPI / labor / growth', `${fx2(cpiTerm)} / ${fx2(laborTerm)} / ${fx2(growthTerm)}`]
+            ['Sensitivity (beta) inflation / labor / growth', `${b.cpi} / ${b.labor} / ${b.growth}`],
+            ['Terms inflation / labor / growth', `${fx2(cpiTerm)} / ${fx2(laborTerm)} / ${fx2(growthTerm)}`]
           ],
           how: `Average of the three terms = ${fx2(aggSurprise)}, capped at ±1. Labor and growth are multiplied by ${growthRegimeSign} in this regime.`,
           notes: surprises.map(x => x.missing ? `${x.name}: no data yet (excluded)` : x.stale ? `${x.name}: stale (excluded)` : `${x.name}: ${x.actual} vs ${x.expected} → Z ${fx2(x.zScore, 1)}`)
         });
-        if (['cpi', 'unemployment', 'gdp', 'pmi', 'nfp', 'retail', 'ismServices'].some(id => sStale[id])) slots.push('economicSurprise');
+        if (['cpi', 'ppi', 'pce', 'unemployment', 'nfp', 'claims', 'gdp', 'pmi', 'retail', 'ismServices'].some(id => sStale[id])) slots.push('economicSurprise');
         if (sStale.rates) slots.push('monetaryPolicy');
 
         // Fear & Greed. Contrarian fade of an EXTREME (<=20 / >=80) is halved when price trend disagrees with it
@@ -1898,42 +1901,81 @@
       const surprises = computeIndicatorSurprises();
       const grid = document.getElementById('surprise-inputs-grid');
       grid.innerHTML = '';
+      const ch = surpriseChannels(surprises);
+      const asset = state.assets[state.selectedAssetId] || Object.values(state.assets)[0];
+      const beta = state.betaWeights[asset.id];
+      const inflReg = state.macroRegime === 'inflation';
 
-      surprises.forEach(item => {
+      const SECTIONS = [
+        { id: 'growth', title: 'Growth', accent: 'bg-emerald-400', beta: beta.growth,
+          blurb: 'Is activity beating or missing expectations?',
+          read: inflReg ? 'Inflation regime: strong growth is read as a headwind (rate-hike risk), at 0.45× strength.' : 'Growth regime: strong growth is good for risk, at 0.85× strength.' },
+        { id: 'inflation', title: 'Inflation', accent: 'bg-rose-400', beta: beta.cpi,
+          blurb: 'Are prices running hotter or cooler than expected?',
+          read: 'Hotter than expected is always a headwind for risk assets, in either regime.' },
+        { id: 'labor', title: 'Labor', accent: 'bg-sky-400', beta: beta.labor,
+          blurb: 'Is the job market tighter or looser than expected?',
+          read: inflReg ? 'Inflation regime: a tight labor market is read as a headwind, at 0.45× strength.' : 'Growth regime: a tight labor market is good for risk, at 0.85× strength.' }
+      ];
+
+      const cardHtml = (item) => {
         const diff = item.rawDiff;
         const diffSign = diff > 0 ? '+' : '';
         const dec = item.unit === 'k' ? 0 : item.unit === 'pts' ? 1 : 2;
         const diffFormatted = item.missing ? '—' : `${diffSign}${diff.toFixed(dec)}${item.unit === 'pts' ? '' : item.unit}`;
         const zColor = item.zScore > 0 ? 'text-blue-300 bg-blue-500/15 border-blue-500/30' : item.zScore < 0 ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' : 'text-gray-400 bg-gray-800 border-gray-700';
-
-        const card = document.createElement('div');
-        card.className = 'bg-[#0b0f19] border border-gray-800 rounded-xl p-3 flex flex-col justify-between gap-2';
-        card.innerHTML = `
-          <div class="flex items-start justify-between gap-1">
-            <div>
-              <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}${item.missing ? ' <span class="px-1 rounded bg-sky-500/15 border border-sky-500/40 text-[9px] font-mono text-sky-300">NEEDS INPUT</span>' : ''}${item.needsConsensus && !item.missing ? ` <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">NEW RELEASE: CHECK CONSENSUS</span> <button onclick="confirmConsensus('${item.id}')" class="px-1 rounded bg-emerald-500/15 border border-emerald-500/40 text-[9px] font-mono text-emerald-300 hover:bg-emerald-500/25">&#10003; still valid</button>` : ''}</div>
-              <div class="text-[10px] font-mono text-gray-500 mt-0.5">${item.releaseDate} • ${item.note}</div>
+        const step = item.unit === 'k' ? 1 : 0.05;
+        const tags = `${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}${item.missing ? ' <span class="px-1 rounded bg-sky-500/15 border border-sky-500/40 text-[9px] font-mono text-sky-300">NEEDS INPUT</span>' : ''}${item.policyOnly ? ' <span class="px-1 rounded bg-gray-700/60 text-[9px] font-mono text-gray-300" title="This surprise feeds the Central Bank Policy slot, not the Economic Surprise slot">&rarr; CENTRAL BANK SLOT</span>' : ''}${item.needsConsensus && !item.missing ? ` <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">NEW RELEASE: CHECK CONSENSUS</span> <button onclick="confirmConsensus('${item.id}')" class="px-1 rounded bg-emerald-500/15 border border-emerald-500/40 text-[9px] font-mono text-emerald-300 hover:bg-emerald-500/25">&#10003; still valid</button>` : ''}`;
+        return `
+          <div class="bg-[#0b0f19] border border-gray-800 rounded-xl p-3 flex flex-col justify-between gap-2">
+            <div class="flex items-start justify-between gap-1">
+              <div>
+                <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${tags}</div>
+                <div class="text-[10px] font-mono text-gray-500 mt-0.5">${item.releaseDate} • ${item.note}</div>
+              </div>
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${zColor} shrink-0">Z: ${formatSignedScore(item.zScore)}</span>
             </div>
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${zColor} shrink-0">Z: ${formatSignedScore(item.zScore)}</span>
-          </div>
+            <div class="grid grid-cols-2 gap-1.5 text-[11px] font-mono mt-1">
+              <label class="bg-gray-900 border border-gray-800 rounded px-2 py-1 flex flex-col">
+                <span class="text-[9px] text-gray-500 uppercase">Actual (${item.unit})</span>
+                <input type="number" step="${step}" placeholder="enter" value="${item.actual ?? ''}" onchange="updateEconomicInput('${item.id}', 'actual', this.value)" class="bg-transparent text-white font-bold focus:outline-none focus:text-emerald-300 w-full mt-0.5" />
+              </label>
+              <label class="bg-gray-900 border ${item.expectedIsProxy ? 'border-sky-500/40' : 'border-gray-800'} rounded px-2 py-1 flex flex-col" ${item.expectedIsProxy ? 'title="No consensus entered: using the average of the previous 4 weeks as a stand-in. Type a consensus to replace it; clear the box to return to this."' : ''}>
+                <span class="text-[9px] ${item.expectedIsProxy ? 'text-sky-300' : 'text-gray-500'} uppercase">${item.expectedIsProxy ? 'Expected (4-wk avg)' : 'Expected'}</span>
+                <input type="number" step="${step}" placeholder="enter" value="${item.expected ?? ''}" onchange="updateEconomicInput('${item.id}', 'expected', this.value)" class="bg-transparent text-gray-300 font-semibold focus:outline-none focus:text-blue-300 w-full mt-0.5" />
+              </label>
+            </div>
+            <div class="flex items-center justify-between text-[10px] font-mono text-gray-400 pt-0.5 border-t border-gray-800/60">
+              <span>Surprise: <strong class="text-gray-200">${diffFormatted}</strong></span>
+              <span>${item.isRateOrInflation ? 'Rate/CPI Shock' : (inflReg ? 'Hawkish Feed' : 'Growth Feed')}</span>
+            </div>
+          </div>`;
+      };
 
-          <div class="grid grid-cols-2 gap-1.5 text-[11px] font-mono mt-1">
-            <label class="bg-gray-900 border border-gray-800 rounded px-2 py-1 flex flex-col">
-              <span class="text-[9px] text-gray-500 uppercase">Actual (${item.unit})</span>
-              <input type="number" step="${item.unit === 'k' ? 1 : 0.05}" placeholder="enter" value="${item.actual ?? ''}" onchange="updateEconomicInput('${item.id}', 'actual', this.value)" class="bg-transparent text-white font-bold focus:outline-none focus:text-emerald-300 w-full mt-0.5" />
-            </label>
-            <label class="bg-gray-900 border border-gray-800 rounded px-2 py-1 flex flex-col">
-              <span class="text-[9px] text-gray-500 uppercase">Expected</span>
-              <input type="number" step="${item.unit === 'k' ? 1 : 0.05}" placeholder="enter" value="${item.expected ?? ''}" onchange="updateEconomicInput('${item.id}', 'expected', this.value)" class="bg-transparent text-gray-300 font-semibold focus:outline-none focus:text-blue-300 w-full mt-0.5" />
-            </label>
+      SECTIONS.forEach(sec => {
+        const items = surprises.filter(x => x.group === sec.id);
+        const feeders = items.filter(x => !x.policyOnly);
+        const live = feeders.filter(x => !x.missing && !x.stale).length;
+        const z = ch[sec.id];
+        const zCls = z > 0 ? 'text-blue-300 bg-blue-500/15 border-blue-500/30' : z < 0 ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' : 'text-gray-400 bg-gray-800 border-gray-700';
+        const block = document.createElement('div');
+        block.className = 'space-y-2';
+        block.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pb-1.5 border-b border-gray-800/80">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-1.5 h-4 rounded ${sec.accent} shrink-0"></span>
+              <h3 class="text-xs font-bold uppercase tracking-wider text-gray-100">${sec.title}</h3>
+              <span class="text-[10px] text-gray-500 hidden sm:inline">${sec.blurb}</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] font-mono">
+              <span class="${live < feeders.length ? 'text-amber-300' : 'text-gray-500'}">${live}/${feeders.length} live</span>
+              <span class="text-gray-500">${asset.id} sensitivity <strong class="text-gray-300">${sec.beta}×</strong></span>
+              <span class="px-1.5 py-0.5 rounded border ${zCls}" title="Average of the live indicators in this section: this is what feeds the Economic Surprise slot">Channel Z: ${formatSignedScore(round1(z))}</span>
+            </div>
           </div>
-
-          <div class="flex items-center justify-between text-[10px] font-mono text-gray-400 pt-0.5 border-t border-gray-800/60">
-            <span>Surprise: <strong class="text-gray-200">${diffFormatted}</strong></span>
-            <span>${item.isRateOrInflation ? 'Rate/CPI Shock' : (state.macroRegime === 'inflation' ? 'Hawkish Feed' : 'Growth Feed')}</span>
-          </div>
-        `;
-        grid.appendChild(card);
+          <div class="text-[10px] text-gray-500 -mt-0.5">${sec.read}</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">${items.map(cardHtml).join('')}</div>`;
+        grid.appendChild(block);
       });
     }
 
@@ -2677,7 +2719,8 @@
         // on/after the release data.json knows about; a newer release replaces it (FRED / consensus.json are the source of truth).
         const typedActual = !!i.actualDate && (!v.releaseISO || i.actualDate >= v.releaseISO);
         if (v.actual != null && !typedActual) { i.actual = v.actual; i.actualDate = null; if (v.releaseDate) i.releaseDate = v.releaseDate; }
-        if (v.expected != null && !i.expectedDate) i.expected = v.expected;
+        if (v.expected != null && !i.expectedDate) { i.expected = v.expected; i.expectedIsProxy = false; }
+        else if (v.expected == null && v.expectedProxy != null && !i.expectedDate) { i.expected = v.expectedProxy; i.expectedIsProxy = true; }   // weekly claims: 4-week average stands in for consensus
         // Consensus freshness: a release newer than your last consensus entry means the Expected value may belong to the previous release
         i.needsConsensus = i.expectedDate ? !!(v.releaseISO && v.releaseISO > i.expectedDate) : !!v.needsConsensus;
       });
@@ -2944,11 +2987,17 @@
     }
     function updateEconomicInput(id, field, rawVal) {
       const target = state.indicators.find(i => i.id === id);
+      if (target && rawVal === '' && (field === 'expected' || field === 'actual')) {
+        // Clearing a field removes your typed value, so the file / automatic baseline applies again
+        target[field] = null; target[field + 'Date'] = null; if (field === 'expected') { target.needsConsensus = false; target.expectedIsProxy = false; }
+        loadAutoData().catch(() => {}).finally(() => { applyQuantModel(); saveState(); renderAll(); });
+        return;
+      }
       const num = parseFloat(rawVal);
       if (!target || isNaN(num)) return;
       target[field] = num;
       target.manualDate = todayKey();
-      if (field === 'expected') { target.expectedDate = todayKey(); target.needsConsensus = false; }
+      if (field === 'expected') { target.expectedDate = todayKey(); target.needsConsensus = false; target.expectedIsProxy = false; }
       if (field === 'actual') target.actualDate = todayKey();
       target.autoStale = false;   // a value you typed is fresh by definition
       renderAutoPill();
