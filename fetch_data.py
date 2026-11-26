@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Daily data fetcher for the Macro Terminal. Python stdlib only.
+\"\"\"Daily data fetcher for the Macro Terminal. Python stdlib only.
 Env: FRED_API_KEY (free, fred.stlouisfed.org). Optional file: consensus.json (your expected values; actuals FRED does not carry: ISM PMIs).
-Writes data.json (for GitHub Pages / http) and data.js (for opening the HTML straight from disk)."""
+Writes data.json (for GitHub Pages / http) and data.js (for opening the HTML straight from disk).\"\"\"
 import json, os, math, urllib.request, urllib.parse, datetime as dt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -39,8 +39,8 @@ def yahoo(sym):
                 sma50=sum(c[-50:]) / len(c[-50:]), sma200=sum(c[-200:]) / len(c[-200:]), mu=mu, sd=sd)
 
 def fred(series, n=1):
-    """Latest n valid observations, newest first. Over-fetches because FRED returns '.' placeholders
-    for days not yet published; with limit=n those placeholders were filtered out and left an empty list."""
+    \"\"\"Latest n valid observations, newest first. Over-fetches because FRED returns '.' placeholders
+    for days not yet published; with limit=n those placeholders were filtered out and left an empty list.\"\"\"
     q = urllib.parse.urlencode(dict(series_id=series, api_key=KEY, file_type="json", sort_order="desc", limit=n + 15))
     obs = get("https://api.stlouisfed.org/fred/series/observations?" + q)["observations"]
     vals = [(o["date"], float(o["value"])) for o in obs if o["value"] not in (".", "", None)]

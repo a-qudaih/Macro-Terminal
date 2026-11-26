@@ -30,16 +30,14 @@ Rebuilt version with the following upgrades over v6:
 
 ### How to use
 1. Run `python fetch_data.py` (requires `FRED_API_KEY` env var) to refresh `data.json` + `data.js`
-2. Open `index.html` in a browser (works from disk via data.js, or via any static host)
-3. Use **Log Snapshot** to record current scores into the performance history
-4. Switch to **Score History & Performance** tab for analytics
+2. Optionally run `python build_replay.py` to build `replay_data.json` + `replay_data.js` for Time Machine & range backtests
+3. Open `index.html` in a browser (works from disk via data.js, or via any static host)
+4. Use **Log Snapshot** to record current scores into the performance history
+5. Switch to **Score History & Performance** tab for analytics
 
 ### Files
 - `index.html` — the terminal
 - `fetch_data.py` — daily data fetcher (Yahoo + FRED + CFTC)
+- `build_replay.py` — historical replay dataset builder for Time Machine & backtest sweeps
 - `data.json` / `data.js` — latest snapshot
 - `consensus.json` — your expected values + release dates for non-FRED series
-
----
-
-Built as a focused evolution of the original Macro Terminal.
