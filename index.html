@@ -102,11 +102,28 @@
     }
   </style>
 <script src="data.js" onerror="void 0"></script>
+<script src="history.js" onerror="void 0"></script>
 </head>
 <body class="min-h-screen flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
 
   <!-- Toast Notification Container -->
   <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Economic indicator history modal (opened by clicking a Surprise Engine card) -->
+  <div id="ind-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="if(event.target===this)closeIndicatorChart()">
+    <div class="bg-terminal-card border border-terminal-border rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-terminal-border bg-terminal-panel flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3 id="ind-title" class="text-base font-bold text-white"></h3>
+          <p id="ind-sub" class="text-[11px] font-mono text-gray-500"></p>
+        </div>
+        <button onclick="closeIndicatorChart()" class="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors" aria-label="Close">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="ind-body" class="p-5 space-y-4 overflow-y-auto"></div>
+    </div>
+  </div>
 
   <!-- Asset Sensitivity Beta Matrix Modal -->
   <div id="beta-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -240,7 +257,7 @@
         </button>
 
         <!-- Force Sync Live Feeds Button -->
-        <button onclick="loadAutoData().catch(() => {}).finally(() => syncLiveMarketData(true))" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-medium transition-all active:scale-95" title="Fetch live market feeds">
+        <button onclick="loadAutoData().catch(() => {}).then(() => loadHistoryData()).catch(() => {}).finally(() => syncLiveMarketData(true))" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 text-xs font-medium transition-all active:scale-95" title="Fetch live market feeds">
           <i id="sync-spinner" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
           <span>Sync</span>
         </button>
@@ -1998,12 +2015,12 @@
         const diffFormatted = item.missing ? '—' : `${diffSign}${diff.toFixed(dec)}${item.unit === 'pts' ? '' : item.unit}`;
         const zColor = item.zScore > 0 ? 'text-blue-300 bg-blue-500/15 border-blue-500/30' : item.zScore < 0 ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' : 'text-gray-400 bg-gray-800 border-gray-700';
         const step = item.unit === 'k' ? 1 : 0.05;
-        const tags = `${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}${item.missing ? ' <span class="px-1 rounded bg-sky-500/15 border border-sky-500/40 text-[9px] font-mono text-sky-300">NEEDS INPUT</span>' : ''}${item.policyOnly ? ' <span class="px-1 rounded bg-gray-700/60 text-[9px] font-mono text-gray-300" title="This surprise feeds the Central Bank Policy slot, not the Economic Surprise slot">&rarr; CENTRAL BANK SLOT</span>' : ''}${item.needsConsensus && !item.missing ? ` <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">NEW RELEASE: CHECK CONSENSUS</span> <button onclick="confirmConsensus('${item.id}')" class="px-1 rounded bg-emerald-500/15 border border-emerald-500/40 text-[9px] font-mono text-emerald-300 hover:bg-emerald-500/25">&#10003; still valid</button>` : ''}`;
+        const tags = `${item.stale ? ' <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">STALE &rarr; 0</span>' : ''}${item.missing ? ' <span class="px-1 rounded bg-sky-500/15 border border-sky-500/40 text-[9px] font-mono text-sky-300">NEEDS INPUT</span>' : ''}${item.policyOnly ? ' <span class="px-1 rounded bg-gray-700/60 text-[9px] font-mono text-gray-300" title="This surprise feeds the Central Bank Policy slot, not the Economic Surprise slot">&rarr; CENTRAL BANK SLOT</span>' : ''}${item.needsConsensus && !item.missing ? ` <span class="px-1 rounded bg-amber-500/15 border border-amber-500/40 text-[9px] font-mono text-amber-300">NEW RELEASE: CHECK CONSENSUS</span> <button onclick="event.stopPropagation();confirmConsensus('${item.id}')" class="px-1 rounded bg-emerald-500/15 border border-emerald-500/40 text-[9px] font-mono text-emerald-300 hover:bg-emerald-500/25">&#10003; still valid</button>` : ''}`;
         return `
           <div class="bg-[#0b0f19] border border-gray-800 rounded-xl p-3 flex flex-col justify-between gap-2">
-            <div class="flex items-start justify-between gap-1">
+            <div class="flex items-start justify-between gap-1 cursor-pointer group" onclick="openIndicatorChart('${item.id}')" title="Click for the history chart">
               <div>
-                <div class="text-xs font-semibold text-gray-200 leading-tight">${item.name}${tags}</div>
+                <div class="text-xs font-semibold text-gray-200 leading-tight group-hover:text-blue-300">${item.name}<svg class="inline w-3 h-3 ml-1 -mt-0.5 text-gray-500 group-hover:text-blue-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></svg>${tags}</div>
                 <div class="text-[10px] font-mono text-gray-500 mt-0.5">${item.releaseDate} • ${item.note}</div>
               </div>
               <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${zColor} shrink-0">Z: ${formatSignedScore(item.zScore)}</span>
@@ -2811,6 +2828,206 @@
       saveState();
     }
 
+    // =========================================================================
+    // INDICATOR HISTORY: click an Economic Surprise card for its chart + release log
+    // =========================================================================
+    // history.json / history.js are written by fetch_data.py: `series` = the FRED time series behind each indicator,
+    // `releases` = a permanent log of every actual + expected pair. Values you type here are also kept in this browser.
+    const ECON_LOG_KEY = 'macro_terminal_econ_log_v1';
+    let HIST_DATA = { series: {}, releases: {} };
+    let indChart = { id: null, range: '2y' };
+    const IND_SOURCE = {
+      cpi: 'FRED CPIAUCSL, year-over-year %', ppi: 'FRED PPIFIS (final demand), year-over-year %', pce: 'FRED PCEPILFE (core), year-over-year %',
+      unemployment: 'FRED UNRATE', gdp: 'FRED A191RL1Q225SBEA (quarterly, annualised)', nfp: 'FRED PAYEMS, monthly change (thousands)',
+      retail: 'FRED RSAFS, month-over-month %', claims: 'FRED ICSA, weekly (thousands)', rates: 'FRED DFEDTARU, upper bound (a point is drawn each time it changed)',
+      pmi: 'Not on FRED: builds up from the release log and the values you type', ismServices: 'Not on FRED: builds up from the release log and the values you type'
+    };
+
+    async function loadHistoryData() {
+      let h = window.AUTO_HISTORY || null;
+      try { const r = await fetch('./history.json?t=' + Date.now()); if (r.ok) h = await r.json(); } catch (_) {}
+      if (h) HIST_DATA = { series: h.series || {}, releases: h.releases || {} };
+      if (!document.getElementById('ind-modal').classList.contains('hidden')) renderIndicatorChart();
+    }
+    function readLocalEconLog() { try { return JSON.parse(localStorage.getItem(ECON_LOG_KEY)) || {}; } catch (_) { return {}; } }
+    function logLocalEcon(id, field, num) {
+      const log = readLocalEconLog(), arr = log[id] || (log[id] = []), d = todayKey();
+      let e = arr.find(x => x.d === d); if (!e) { e = { d }; arr.push(e); }
+      e[field] = num; arr.sort((a, b) => a.d.localeCompare(b.d));
+      try { localStorage.setItem(ECON_LOG_KEY, JSON.stringify(log)); } catch (_) {}
+    }
+
+    function indFmt(v, unit) {
+      if (v == null || isNaN(v)) return '—';
+      return unit === 'k' ? Math.round(v).toLocaleString() + 'k' : unit === 'pts' ? v.toFixed(1) : v.toFixed(2) + (unit || '');
+    }
+    function indSeriesFor(id) {
+      const toPt = (d, v) => ({ d, t: Date.parse(d + 'T00:00:00Z'), v });
+      let pts = (HIST_DATA.series[id] || []).map(([d, v]) => toPt(d, v));
+      let fromLog = false;
+      if (!pts.length) {   // no FRED series (ISM PMIs): plot the logged actuals
+        const m = new Map();
+        (HIST_DATA.releases[id] || []).forEach(r => { if (typeof r.actual === 'number') m.set(r.releaseISO, r.actual); });
+        (readLocalEconLog()[id] || []).forEach(r => { if (typeof r.actual === 'number' && !m.has(r.d)) m.set(r.d, r.actual); });
+        pts = [...m].map(([d, v]) => toPt(d, v)).sort((a, b) => a.t - b.t); fromLog = true;
+      }
+      return { pts, fromLog };
+    }
+    function indReleaseRows(id) {
+      const rows = new Map();
+      (HIST_DATA.releases[id] || []).forEach(r => rows.set(r.releaseISO, { d: r.releaseISO, actual: r.actual, expected: r.expected, proxy: !!r.proxy, typed: false }));
+      (readLocalEconLog()[id] || []).forEach(r => {
+        const o = rows.get(r.d) || { d: r.d }; o.typed = true;
+        if (typeof r.actual === 'number') o.actual = r.actual;
+        if (typeof r.expected === 'number') { o.expected = r.expected; o.proxy = false; }
+        rows.set(r.d, o);
+      });
+      return [...rows.values()].sort((a, b) => b.d.localeCompare(a.d));
+    }
+
+    function openIndicatorChart(id, range) {
+      indChart = { id, range: range || (indChart.id === id ? indChart.range : '2y') };
+      const m = document.getElementById('ind-modal');
+      m.classList.remove('hidden'); m.classList.add('flex');
+      renderIndicatorChart();
+    }
+    function closeIndicatorChart() {
+      const m = document.getElementById('ind-modal');
+      m.classList.add('hidden'); m.classList.remove('flex');
+    }
+    function setIndRange(r) { indChart.range = r; renderIndicatorChart(); }
+
+    function renderIndicatorChart() {
+      const ind = state.indicators.find(i => i.id === indChart.id); if (!ind) return;
+      const { pts: allPts, fromLog } = indSeriesFor(ind.id);
+      const rows = indReleaseRows(ind.id);
+      document.getElementById('ind-title').textContent = ind.name;
+      document.getElementById('ind-sub').textContent = IND_SOURCE[ind.id] || '';
+
+      const cutoffFor = r => { const y = 365.25 * 86400000; return r === '1y' ? Date.now() - y : r === '2y' ? Date.now() - 2 * y : r === '5y' ? Date.now() - 5 * y : 0; };
+      let range = indChart.range, pts = allPts.filter(p => p.t >= cutoffFor(range));
+      if (pts.length < 3 && range !== 'all') { pts = allPts; range = 'all'; }     // short history: show everything we have
+      const btn = (r, label) => `<button onclick="setIndRange('${r}')" class="px-2 py-1 rounded-md text-[11px] font-mono border ${range === r ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'text-gray-400 border-transparent hover:text-gray-200'}">${label}</button>`;
+      const controls = `<div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="inline-flex rounded-lg bg-gray-900 p-1 border border-terminal-border">${btn('1y', '1Y')}${btn('2y', '2Y')}${btn('5y', '5Y')}${btn('all', 'All')}</div>
+        <button onclick="downloadIndicatorCsv()" class="px-2.5 py-1 rounded-md text-[11px] font-mono border border-gray-700 text-gray-300 hover:bg-gray-800">Download CSV</button></div>`;
+
+      // Expected markers: pinned to the data point the release reported (latest observation on/before the release date)
+      const markers = [];
+      rows.forEach(r => {
+        if (typeof r.expected !== 'number') return;
+        let t = null;
+        if (fromLog) t = Date.parse(r.d + 'T00:00:00Z');
+        else { const p = [...allPts].reverse().find(q => q.d <= r.d); if (p) t = p.t; }
+        if (t != null && pts.length && t >= pts[0].t && t <= pts[pts.length - 1].t) markers.push({ t, v: r.expected, proxy: r.proxy });
+      });
+
+      let chart;
+      if (pts.length < 2) {
+        chart = `<div class="rounded-xl border border-gray-800 bg-[#0b0f19] p-6 text-center text-xs text-gray-400">${pts.length ? 'Only one data point so far.' : 'No history stored yet.'}
+          ${fromLog ? 'This indicator is not on FRED, so its history builds up with every release you record (type the Actual and Expected on the card).' : 'It will fill in after the next scheduled data run.'}</div>`;
+        window._indView = null;
+      } else {
+        const W = 760, H = 300, ml = 52, mr = 16, mt = 14, mb = 28;
+        const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+        const vals = pts.map(p => p.v).concat(markers.map(m => m.v));
+        let lo = Math.min(...vals), hi = Math.max(...vals); if (hi === lo) { hi += 1; lo -= 1; }
+        const pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+        const x = t => ml + (t - t0) / ((t1 - t0) || 1) * (W - ml - mr);
+        const y = v => mt + (1 - (v - lo) / (hi - lo)) * (H - mt - mb);
+        const step = ind.id === 'rates';
+        let d = '';
+        pts.forEach((p, i) => { d += i === 0 ? `M${x(p.t).toFixed(1)} ${y(p.v).toFixed(1)}` : (step ? `H${x(p.t).toFixed(1)}V${y(p.v).toFixed(1)}` : `L${x(p.t).toFixed(1)} ${y(p.v).toFixed(1)}`); });
+        const avg = pts.reduce((s, p) => s + p.v, 0) / pts.length;
+        let grid = '';
+        for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4, yy = y(v); grid += `<line x1="${ml}" x2="${W - mr}" y1="${yy}" y2="${yy}" stroke="#1f2937" stroke-width="1"/><text x="${ml - 6}" y="${yy + 3}" text-anchor="end" font-size="10" fill="#6b7280" font-family="monospace">${indFmt(v, ind.unit).replace('%', '')}</text>`; }
+        for (let i = 0; i <= 5; i++) { const t = t0 + (t1 - t0) * i / 5, dt = new Date(t); grid += `<text x="${x(t)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === 5 ? 'end' : 'middle'}" font-size="10" fill="#6b7280" font-family="monospace">${dt.toLocaleString('en', { month: 'short', timeZone: 'UTC' })} ${String(dt.getUTCFullYear()).slice(2)}</text>`; }
+        const dots = pts.length <= 70 ? pts.map(p => `<circle cx="${x(p.t).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2.3" fill="#60a5fa"/>`).join('') : '';
+        const last = pts[pts.length - 1];
+        const mk = markers.map(m => `<path d="M${x(m.t)} ${y(m.v) - 5}L${x(m.t) + 5} ${y(m.v)}L${x(m.t)} ${y(m.v) + 5}L${x(m.t) - 5} ${y(m.v)}Z" fill="#0b0f19" stroke="${m.proxy ? '#7dd3fc' : '#fbbf24'}" stroke-width="1.6"/>`).join('');
+        chart = `<div class="relative">
+          <div id="ind-tip" class="hidden absolute top-1 -translate-x-1/2 px-2 py-1 rounded-md bg-gray-900 border border-gray-700 text-[10px] font-mono text-gray-200 pointer-events-none whitespace-nowrap z-10"></div>
+          <svg id="ind-svg" viewBox="0 0 ${W} ${H}" class="w-full h-auto rounded-xl bg-[#0b0f19] border border-gray-800" onmousemove="indHover(event)" onmouseleave="indHoverOff()">
+            ${grid}
+            <line x1="${ml}" x2="${W - mr}" y1="${y(avg)}" y2="${y(avg)}" stroke="#6b7280" stroke-width="1" stroke-dasharray="4 4"/>
+            <text x="${W - mr - 2}" y="${y(avg) - 4}" text-anchor="end" font-size="9" fill="#6b7280" font-family="monospace">avg ${indFmt(avg, ind.unit)}</text>
+            <path d="${d}" fill="none" stroke="#60a5fa" stroke-width="1.8" stroke-linejoin="round"/>
+            ${dots}${mk}
+            <circle cx="${x(last.t)}" cy="${y(last.v)}" r="4" fill="#34d399"/>
+            <line id="ind-vline" x1="0" x2="0" y1="${mt}" y2="${H - mb}" stroke="#4b5563" stroke-width="1" style="display:none"/>
+            <circle id="ind-dot" r="4" fill="#fff" stroke="#60a5fa" stroke-width="2" style="display:none"/>
+          </svg></div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-mono text-gray-500">
+            <span><span class="inline-block w-3 h-0.5 bg-blue-400 align-middle"></span> ${ind.id === 'rates' ? 'level' : 'actual'}</span>
+            <span><span class="text-amber-300">&#9671;</span> consensus (expected) at that release</span>
+            ${markers.some(m => m.proxy) ? '<span><span class="text-sky-300">&#9671;</span> 4-week average stand-in</span>' : ''}
+            <span><span class="text-emerald-400">&#9679;</span> latest</span>
+          </div>`;
+        window._indView = { W, pts, markers, x, y, unit: ind.unit };
+      }
+
+      // Summary stats
+      let stats = '';
+      if (allPts.length) {
+        const latest = allPts[allPts.length - 1], prior = allPts[allPts.length - 2];
+        const vs = pts.map(p => p.v), avg = vs.reduce((a, b) => a + b, 0) / vs.length;
+        const pct = Math.round(vs.filter(v => v <= latest.v).length / vs.length * 100);
+        const chg = prior ? latest.v - prior.v : null;
+        const card = (label, val, sub) => `<div class="rounded-lg bg-gray-900 border border-gray-800 px-2.5 py-1.5"><div class="text-[9px] uppercase text-gray-500">${label}</div><div class="text-sm font-bold text-white tabular-nums">${val}</div><div class="text-[10px] text-gray-500">${sub}</div></div>`;
+        stats = `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono">
+          ${card('Latest', indFmt(latest.v, ind.unit), latest.d)}
+          ${card('Prior', prior ? indFmt(prior.v, ind.unit) : '—', chg == null ? '' : (chg >= 0 ? '+' : '') + indFmt(chg, ind.unit).replace('%', ' pt'))}
+          ${card('Range avg', indFmt(avg, ind.unit), `${vs.length} obs`)}
+          ${card('Percentile', pct + '%', `of ${indFmt(Math.min(...vs), ind.unit)} to ${indFmt(Math.max(...vs), ind.unit)}`)}</div>`;
+      }
+
+      // Release log (actual vs expected, surprise, Z)
+      let table;
+      if (!rows.length) {
+        table = `<div class="text-[11px] text-gray-500">No actual/expected pairs logged yet. Each scheduled run adds the current release, and every value you type on the card is kept here too.</div>`;
+      } else {
+        const tr = rows.slice(0, 24).map(r => {
+          const have = typeof r.actual === 'number' && typeof r.expected === 'number';
+          const diff = have ? r.actual - r.expected : null;
+          const z = have ? clamp((ind.invertRawSurprise ? -diff : diff) / ind.stdDev, -1, 1) : null;
+          const zc = z == null ? 'text-gray-500' : z > 0.05 ? 'text-blue-300' : z < -0.05 ? 'text-amber-300' : 'text-gray-400';
+          return `<tr class="border-t border-gray-800/70"><td class="py-1 pr-3 text-gray-400">${r.d}${r.typed ? ' <span class="text-[9px] text-emerald-300">typed</span>' : ''}</td>
+            <td class="py-1 pr-3 text-white tabular-nums">${indFmt(r.actual, ind.unit)}</td>
+            <td class="py-1 pr-3 text-gray-300 tabular-nums">${indFmt(r.expected, ind.unit)}${r.proxy ? ' <span class="text-[9px] text-sky-300">4wk avg</span>' : ''}</td>
+            <td class="py-1 pr-3 tabular-nums text-gray-300">${diff == null ? '—' : (diff > 0 ? '+' : '') + diff.toFixed(ind.unit === 'k' ? 0 : ind.unit === 'pts' ? 1 : 2)}</td>
+            <td class="py-1 tabular-nums ${zc}">${z == null ? '—' : formatSignedScore(round1(z))}</td></tr>`;
+        }).join('');
+        table = `<div class="overflow-x-auto"><table class="w-full text-left text-[11px] font-mono"><thead><tr class="text-[9px] uppercase text-gray-500"><th class="pb-1 pr-3 font-normal">Release</th><th class="pb-1 pr-3 font-normal">Actual</th><th class="pb-1 pr-3 font-normal">Expected</th><th class="pb-1 pr-3 font-normal">Surprise</th><th class="pb-1 font-normal">Z (before decay)</th></tr></thead><tbody>${tr}</tbody></table></div>`;
+      }
+      document.getElementById('ind-body').innerHTML = `${controls}${chart}${stats}
+        <div><div class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Release log: actual vs. consensus</div>${table}</div>`;
+    }
+
+    function indHover(e) {
+      const v = window._indView; if (!v) return;
+      const r = e.currentTarget.getBoundingClientRect(), sx = (e.clientX - r.left) / r.width * v.W;
+      let best = v.pts[0], bd = Infinity;
+      v.pts.forEach(p => { const dd = Math.abs(v.x(p.t) - sx); if (dd < bd) { bd = dd; best = p; } });
+      const px = v.x(best.t), py = v.y(best.v), mk = v.markers.find(m => m.t === best.t);
+      const dot = document.getElementById('ind-dot'), line = document.getElementById('ind-vline'), tip = document.getElementById('ind-tip');
+      dot.setAttribute('cx', px); dot.setAttribute('cy', py); dot.style.display = '';
+      line.setAttribute('x1', px); line.setAttribute('x2', px); line.style.display = '';
+      tip.innerHTML = `${best.d} &nbsp; <strong class="text-white">${indFmt(best.v, v.unit)}</strong>${mk ? ` &nbsp; <span class="text-amber-300">exp ${indFmt(mk.v, v.unit)}</span>` : ''}`;
+      tip.style.left = Math.min(Math.max(px / v.W * 100, 14), 86) + '%'; tip.classList.remove('hidden');
+    }
+    function indHoverOff() {
+      ['ind-dot', 'ind-vline'].forEach(i => { const el = document.getElementById(i); if (el) el.style.display = 'none'; });
+      const tip = document.getElementById('ind-tip'); if (tip) tip.classList.add('hidden');
+    }
+    function downloadIndicatorCsv() {
+      const id = indChart.id, { pts } = indSeriesFor(id), rows = indReleaseRows(id);
+      const csv = 'date,value\n' + pts.map(p => `${p.d},${p.v}`).join('\n') +
+        '\n\nrelease_date,actual,expected,expected_is_4wk_avg\n' + rows.map(r => `${r.d},${r.actual ?? ''},${r.expected ?? ''},${r.proxy ? 1 : 0}`).join('\n') + '\n';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `${id}_history.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+
     function renderAll() {
       renderBiasBoard();
       updateModeButtonsUI();
@@ -3071,6 +3288,7 @@
       const num = parseFloat(rawVal);
       if (!target || isNaN(num)) return;
       target[field] = num;
+      logLocalEcon(id, field, num);
       target.manualDate = todayKey();
       if (field === 'expected') { target.expectedDate = todayKey(); target.needsConsensus = false; target.expectedIsProxy = false; }
       if (field === 'actual') target.actualDate = todayKey();
@@ -3223,9 +3441,11 @@
     // =========================================================================
     // 7. INITIALIZATION & 60-SECOND LIVE POLLING LOOP
     // =========================================================================
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeIndicatorChart(); });
     window.addEventListener('DOMContentLoaded', async () => {
       loadSavedState();
       await loadAutoData();
+      await loadHistoryData();
       applyQuantModel();
       renderAll();
       syncLiveMarketData(false);
@@ -3235,7 +3455,7 @@
         if (state.countdown <= 0) {
           state.countdown = 300;
           // Re-read data.json first so a tab left open picks up new snapshots (it used to be read only once, at page load)
-          loadAutoData().catch(() => {}).finally(() => syncLiveMarketData(false));
+          loadAutoData().catch(() => {}).then(() => loadHistoryData()).catch(() => {}).finally(() => syncLiveMarketData(false));
         }
         const cdEl = document.getElementById('sync-countdown');
         if (cdEl) cdEl.textContent = `${state.countdown}s`;

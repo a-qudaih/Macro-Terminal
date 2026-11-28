@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Daily data fetcher for the Macro Terminal. Python stdlib only.
 Env: FRED_API_KEY (free, fred.stlouisfed.org). Optional file: consensus.json (your expected values; actuals FRED does not carry: ISM PMIs).
-Writes data.json (for GitHub Pages / http) and data.js (for opening the HTML straight from disk)."""
+Writes data.json (for GitHub Pages / http) and data.js (for opening the HTML straight from disk).
+Also writes history.json / history.js: the time series behind each Economic Surprise indicator (charts) and a permanent
+release log of every actual + expected pair, so the history keeps growing in the repo."""
 import json, os, math, urllib.request, urllib.parse, datetime as dt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -19,6 +21,15 @@ MACRO_Y = {"us10y": "^TNX", "vix": "^VIX", "dxy": "DX-Y.NYB",
 COT = {"US500": "E-MINI S&P 500%", "US100": "NASDAQ%MINI%", "US30": "DJIA%", "US2000": "RUSSELL%E-MINI%",
        "JP225": "NIKKEI%", "XAUUSD": "GOLD - COMMODITY EXCHANGE%",
        "XAGUSD": "SILVER - COMMODITY EXCHANGE%", "USOIL": "CRUDE OIL, LIGHT SWEET%", "BTCUSD": "BITCOIN%"}
+
+# Economic Surprise indicator history: id -> (FRED series, transform, observations to keep)
+# yoy = % change vs 12 obs earlier, mom = % change vs previous obs, diff = change vs previous obs, k = persons -> thousands,
+# steps = daily series reduced to the dates where the value changed. ISM PMIs are not on FRED: they only build up in the release log.
+HIST = {"cpi": ("CPIAUCSL", "yoy", 60), "ppi": ("PPIFIS", "yoy", 60), "pce": ("PCEPILFE", "yoy", 60),
+        "unemployment": ("UNRATE", "level", 60), "gdp": ("A191RL1Q225SBEA", "level", 24),
+        "nfp": ("PAYEMS", "diff", 60), "retail": ("RSAFS", "mom", 60),
+        "claims": ("ICSA", "k", 104), "rates": ("DFEDTARU", "steps", 1000)}
+RELEASE_LOG_MAX = 300   # entries kept per indicator
 
 def get(url, headers=None, timeout=25):
     req = urllib.request.Request(url, headers={**UA, **(headers or {})})
@@ -166,6 +177,49 @@ def main():
         v["releaseDate"] = dt.date.fromisoformat(v["releaseISO"]).strftime("%b %d")
         v["needsConsensus"] = v["releaseISO"] > as_of
         if k == "claims" and v.get("expected") is None: v["needsConsensus"] = False   # weekly: the 4-week-average proxy applies, so no weekly nag
+
+
+    # ---- History: chart series (re-fetched from FRED each run) + permanent release log (grows, never rewritten) ----
+    hp = os.path.join(HERE, "history.json")
+    hprev = json.load(open(hp)) if os.path.exists(hp) else {}
+    hist = {"updated": NOW.isoformat(), "series": dict(hprev.get("series", {})), "releases": hprev.get("releases", {})}
+
+    def history_block():
+        if not KEY: raise RuntimeError("FRED_API_KEY not set")
+        failed = []
+        for k, (series, kind, keep) in HIST.items():
+            try:
+                lag = 12 if kind == "yoy" else 1 if kind in ("mom", "diff") else 0
+                obs = fred(series, keep + lag)[::-1]            # oldest -> newest
+                v = [x for _, x in obs]
+                if kind == "level": pts = list(zip([d for d, _ in obs], v))
+                elif kind == "k": pts = [(d, x / 1000) for d, x in obs]
+                elif kind == "diff": pts = [(obs[i][0], v[i] - v[i - 1]) for i in range(1, len(obs))]
+                elif kind == "mom": pts = [(obs[i][0], (v[i] / v[i - 1] - 1) * 100) for i in range(1, len(obs))]
+                elif kind == "yoy": pts = [(obs[i][0], (v[i] / v[i - 12] - 1) * 100) for i in range(12, len(obs))]
+                else:   # steps
+                    pts = [obs[i] for i in range(len(obs)) if i == 0 or i == len(obs) - 1 or obs[i][1] != obs[i - 1][1]]
+                hist["series"][k] = [[d, round(x, 3)] for d, x in pts]
+            except Exception as e: failed.append(f"{k}: {e}")
+        if failed: raise RuntimeError(" | ".join(failed))
+    run("history", history_block)
+
+    # Release log: one entry per indicator per release. An Expected value is only logged when it is current
+    # (needsConsensus False), otherwise it may still belong to the previous release.
+    for k, v in out["indicators"].items():
+        if v.get("actual") is None: continue
+        log = hist["releases"].setdefault(k, [])
+        e = next((x for x in log if x["releaseISO"] == v["releaseISO"]), None)
+        if e is None: e = {"releaseISO": v["releaseISO"]}; log.append(e)
+        e["actual"] = v["actual"]
+        if v.get("expected") is not None and not v.get("needsConsensus"):
+            e["expected"] = v["expected"]; e.pop("proxy", None)
+        elif v.get("expectedProxy") is not None and "expected" not in e:
+            e["expected"] = v["expectedProxy"]; e["proxy"] = True        # 4-week average stand-in (claims)
+        log.sort(key=lambda x: x["releaseISO"])
+        del log[:-RELEASE_LOG_MAX]
+    json.dump(hist, open(hp, "w"), indent=1)
+    open(os.path.join(HERE, "history.js"), "w").write("window.AUTO_HISTORY = " + json.dumps(hist) + ";\n")
 
     json.dump(out, open(path, "w"), indent=1)
     open(os.path.join(HERE, "data.js"), "w").write("window.AUTO_DATA = " + json.dumps(out) + ";\n")

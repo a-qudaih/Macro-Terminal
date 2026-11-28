@@ -1,5 +1,19 @@
 # Macro Terminal: changes in this version
 
+## Added: click any Economic Surprise indicator for its history chart
+- **Click any card** in the Surprise Engine (name/header area) to open a chart: line of the stored history, dashed average,
+  hollow diamonds where a consensus (expected) was logged, hover for date/value/expected, 1Y / 2Y / 5Y / All, latest / prior / average / percentile,
+  and a release log table (actual, expected, surprise, Z before decay). **Download CSV** exports both. Esc or a click outside closes it.
+- **Stored in the repo, not only the browser:** `fetch_data.py` now writes `history.json` + `history.js` every run.
+  - `series`: the FRED time series behind each indicator (CPI/PPI/Core PCE YoY, unemployment, GDP, NFP monthly change, retail MoM, claims, Fed rate steps).
+    Re-fetched each run, so revisions are picked up.
+  - `releases`: a permanent log of every actual + expected pair, one entry per release, never rewritten. An Expected is only logged if it is current
+    (not flagged NEW RELEASE: CHECK CONSENSUS); the claims 4-week-average stand-in is logged flagged `proxy`.
+- Values you type on a card are also logged in this browser (shown as "typed" in the table).
+- ISM Mfg PMI and ISM Services are not on FRED: their charts build up from the release log and your typed values.
+- **update-data.yml must commit the new files**: add `history.json history.js` to the `git add` line, next to `data.json data.js`.
+- Tested with mocked FRED responses and in headless Chromium; the live FRED calls for the new series are untested.
+
 ## Bug fixes
 - **fetch_data.py: FRED "list index out of range".** FRED returns "." for the newest day when it has not been
   published yet. With `limit=1` the "." was filtered out and the list was empty. Now over-fetches and takes the newest
